@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LTP TaxSync - Tải Hóa Đơn Thuế & Chấm Công</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="brand-icon">🧾</div>
+        <div class="brand-info">
+          <h3>LTP TaxSync</h3>
+          <span class="badge-free">Bản Miễn Phí (Free Tier)</span>
+        </div>
+      </div>
+      <a href="https://tax.ltp-soft.com" target="_blank" id="btnOpenWeb" class="btn-text-icon" title="Mở Dashboard đầy đủ">
+        🌐 Mở Web
+      </a>
+    </header>
+
+    <!-- Marketing / Lead-Magnet Banner -->
+    <div class="lead-magnet-card">
+      <div class="card-icon">⏰</div>
+      <div class="card-content">
+        <p class="card-title">Hệ Sinh Thái Chấm Công 4.0 (LTP Attendance)</p>
+        <p class="card-desc">Chấm công GPS & QR động không cần máy vân tay rườm rà. Tự động tính lương chuẩn mực kế toán.</p>
+        <a href="https://ltp-soft.com" target="_blank" class="card-link">
+          👉 Dùng thử 60 ngày miễn phí tại ltp-soft.com
+        </a>
+      </div>
+    </div>
+
+    <!-- Form tra cứu nhanh -->
+    <form id="syncForm" class="sync-form">
+      <div class="form-group">
+        <label for="mst">Mã số thuế Doanh nghiệp (MST)</label>
+        <input type="text" id="mst" placeholder="VD: 0101234567" required autocomplete="username">
+      </div>
+
+      <div class="form-group">
+        <label for="password">Mật khẩu trang Hóa đơn điện tử</label>
+        <div class="password-wrapper">
+          <input type="password" id="password" placeholder="Nhập mật khẩu thuế" required autocomplete="current-password">
+          <button type="button" id="togglePass" class="btn-icon">👁️</button>
+        </div>
+        <span class="field-hint">🔒 Lưu cục bộ trên máy bạn, 100% Client-Side bảo mật.</span>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group col">
+          <label for="quarter">Chọn Quý</label>
+          <select id="quarter">
+            <option value="1">Quý 1 (Tháng 1-3)</option>
+            <option value="2">Quý 2 (Tháng 4-6)</option>
+            <option value="3">Quý 3 (Tháng 7-9)</option>
+            <option value="4">Quý 4 (Tháng 10-12)</option>
+          </select>
+        </div>
+
+        <div class="form-group col">
+          <label for="year">Năm</label>
+          <input type="number" id="year" value="2026" min="2020" max="2030">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="backendUrl">Backend Server</label>
+        <input type="text" id="backendUrl" value="http://localhost:3001">
+      </div>
+
+      <!-- Progress Section -->
+      <div id="progressArea" class="progress-area hidden">
+        <div class="progress-header">
+          <span id="progressText">Đang chuẩn bị...</span>
+          <span id="progressPercent">0%</span>
+        </div>
+        <div class="progress-bar-bg">
+          <div id="progressBar" class="progress-bar-fill" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Action buttons -->
+      <button type="submit" id="btnSubmit" class="btn-primary">
+        🚀 Tải Hóa Đơn & Xuất Excel
+      </button>
+    </form>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span>© 2026 LTP Soft • Hotline/Zalo: 0918.000.xxx • ltp-soft.com</span>
+    </footer>
+  </div>
+
+  <script src="popup.js" type="module"></script>
+</body>
+</html>
