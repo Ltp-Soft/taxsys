@@ -284,14 +284,14 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
   };
 
   return (
-    <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 rounded-3xl p-6 sm:p-7 shadow-2xl mb-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-800 pb-5 mb-6">
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-100 pb-4 mb-4">
         <div>
-          <h2 className="text-base font-bold text-white flex items-center gap-2.5">
+          <h2 className="text-base font-bold text-sm font-bold text-slate-800 flex items-center gap-2">
             <Calendar className="w-5 h-5 text-blue-600" />
             Cấu Hình Kỳ Tra Cứu & Đồng Bộ Hóa Đơn
           </h2>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-[11px] text-slate-500 mt-0.5">
             Kết nối trực tiếp Cổng Thuế Điện Tử (hoadondientu.gdt.gov.vn) qua IP máy khách.
           </p>
         </div>
@@ -301,7 +301,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
           <button
             onClick={handleLoadMockData}
             type="button"
-            className="flex items-center gap-1.5 text-xs font-semibold text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 px-3.5 py-2 rounded-xl border border-indigo-500/30 transition"
+            className="flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-xl border border-indigo-200 transition"
             title="Xem ngay giao diện và xuất file Excel với dữ liệu mẫu không cần đăng nhập"
           >
             <FileCheck className="w-4 h-4 text-indigo-600" />
@@ -310,17 +310,17 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
 
           {/* Trạng thái kết nối Extension */}
           {extensionStatus === 'connected' ? (
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-300 bg-emerald-500/15 px-3 py-1.5 rounded-full border border-emerald-500/30">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
               <span>Chrome Extension: Đã Kết Nối</span>
             </div>
           ) : extensionStatus === 'checking' ? (
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-800 px-3 py-1.5 rounded-full border border-slate-700">
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
               <RefreshCw className="w-3.5 h-3.5 animate-spin text-slate-400" />
               <span>Đang kiểm tra Extension...</span>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-300 bg-amber-500/15 px-3 py-1.5 rounded-full border border-amber-500/30">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 px-3 py-1 rounded-full border border-amber-200">
               <AlertTriangle className="w-4 h-4 text-amber-600" />
               <span>Chưa nhận Extension (Vào chrome://extensions tải lại)</span>
             </div>
@@ -329,14 +329,14 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
       </div>
 
       {/* Bộ chọn chế độ: Theo Quý / Theo Tháng / Khoảng Ngày */}
-      <div className="flex items-center gap-2 mb-4 p-1 bg-slate-950 p-1.5 rounded-2xl border border-slate-800 w-fit mb-5">
+      <div className="flex items-center gap-2 mb-4 p-1 bg-slate-100 p-1 rounded-xl w-fit mb-4">
         <button
           type="button"
           onClick={() => setSyncPeriodType('quarter')}
           className={`px-3 py-1.5 text-xs font-bold rounded-md transition ${
             syncPeriodType === 'quarter'
-              ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/30'
-              : 'text-slate-400 hover:text-white'
+              ? 'bg-white text-blue-700 shadow-xs font-bold'
+              : 'text-slate-600 hover:text-slate-900 font-medium'
           }`}
         >
           Theo Quý (Kê Khai)
@@ -346,8 +346,8 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
           onClick={() => setSyncPeriodType('month')}
           className={`px-3 py-1.5 text-xs font-bold rounded-md transition ${
             syncPeriodType === 'month'
-              ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/30'
-              : 'text-slate-400 hover:text-white'
+              ? 'bg-white text-blue-700 shadow-xs font-bold'
+              : 'text-slate-600 hover:text-slate-900 font-medium'
           }`}
         >
           Theo Tháng (Đối Soát Nhanh)
@@ -357,8 +357,8 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
           onClick={() => setSyncPeriodType('custom')}
           className={`px-3 py-1.5 text-xs font-bold rounded-md transition ${
             syncPeriodType === 'custom'
-              ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/30'
-              : 'text-slate-400 hover:text-white'
+              ? 'bg-white text-blue-700 shadow-xs font-bold'
+              : 'text-slate-600 hover:text-slate-900 font-medium'
           }`}
         >
           Tùy Chọn Khoảng Ngày
@@ -367,8 +367,8 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         <div>
-          <label className="block text-xs font-bold text-slate-300 mb-1.5">Doanh Nghiệp Đang Chọn</label>
-          <div className="text-sm font-bold text-white font-mono bg-slate-950 px-4 py-3 rounded-xl border border-slate-800 truncate">
+          <label className="block text-xs font-bold text-slate-700 mb-1">Doanh Nghiệp Đang Chọn</label>
+          <div className="text-sm font-bold text-xs font-bold text-slate-800 bg-slate-50 px-3 py-2.5 rounded-xl border border-slate-200 truncate">
             {activeAccount ? `${activeAccount.mst} - ${activeAccount.companyName}` : '⚠️ Chưa chọn MST'}
           </div>
         </div>
@@ -376,12 +376,12 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
         {/* Chế độ Theo Quý */}
         {syncPeriodType === 'quarter' && (
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1.5">Chọn Quý Kê Khai</label>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Chọn Quý Kê Khai</label>
             <select
               value={quarter}
               onChange={(e) => setQuarter(e.target.value)}
               disabled={isSyncing}
-              className="w-full text-sm font-medium px-3 py-2 border border-slate-800 rounded-xl focus:outline-none focus:border-blue-500 bg-slate-950 text-white text-xs px-4 py-3"
+              className="w-full text-sm font-medium px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500 bg-white text-slate-800 text-xs px-3 py-2"
             >
               <option value="1">Quý 1 (Tháng 1 - Tháng 3)</option>
               <option value="2">Quý 2 (Tháng 4 - Tháng 6)</option>
@@ -394,12 +394,12 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
         {/* Chế độ Theo Tháng */}
         {syncPeriodType === 'month' && (
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1.5">Chọn Tháng Đối Soát</label>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Chọn Tháng Đối Soát</label>
             <select
               value={month}
               onChange={(e) => setMonth(e.target.value)}
               disabled={isSyncing}
-              className="w-full text-sm font-medium px-3 py-2 border border-slate-800 rounded-xl focus:outline-none focus:border-blue-500 bg-slate-950 text-white text-xs px-4 py-3"
+              className="w-full text-sm font-medium px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500 bg-white text-slate-800 text-xs px-3 py-2"
             >
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (
                 <option key={m} value={m}>Tháng {m}</option>
@@ -412,25 +412,25 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
         {syncPeriodType === 'custom' && (
           <div className="col-span-2 grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1.5">Từ Ngày (dd/mm/yyyy)</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Từ Ngày (dd/mm/yyyy)</label>
               <input
                 type="text"
                 value={fromDate}
                 onChange={(e) => setFromDate(e.target.value)}
                 placeholder="01/10/2025"
                 disabled={isSyncing}
-                className="w-full text-sm px-3 py-2 border border-slate-800 rounded-xl focus:outline-none focus:border-blue-500 bg-slate-950 text-white text-xs px-4 py-3"
+                className="w-full text-sm px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500 bg-white text-slate-800 text-xs px-3 py-2"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1.5">Đến Ngày (dd/mm/yyyy)</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Đến Ngày (dd/mm/yyyy)</label>
               <input
                 type="text"
                 value={toDate}
                 onChange={(e) => setToDate(e.target.value)}
                 placeholder="31/10/2025"
                 disabled={isSyncing}
-                className="w-full text-sm px-3 py-2 border border-slate-800 rounded-xl focus:outline-none focus:border-blue-500 bg-slate-950 text-white text-xs px-4 py-3"
+                className="w-full text-sm px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500 bg-white text-slate-800 text-xs px-3 py-2"
               />
             </div>
           </div>
@@ -438,7 +438,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
 
         {syncPeriodType !== 'custom' && (
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1.5">Năm Kê Khai</label>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Năm Kê Khai</label>
             <input
               type="number"
               value={year}
@@ -446,26 +446,26 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
               disabled={isSyncing}
               min="2020"
               max="2030"
-              className="w-full text-sm font-medium px-3 py-2 border border-slate-800 rounded-xl focus:outline-none focus:border-blue-500 bg-slate-950 text-white text-xs px-4 py-3"
+              className="w-full text-sm font-medium px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500 bg-white text-slate-800 text-xs px-3 py-2"
             />
           </div>
         )}
 
         <div>
-          <label className="block text-xs font-bold text-slate-300 mb-1.5">Backend Server AI</label>
+          <label className="block text-xs font-bold text-slate-700 mb-1">Backend Server AI</label>
           <input
             type="text"
             value={backendUrl}
             onChange={(e) => setBackendUrl(e.target.value)}
             disabled={isSyncing}
             placeholder="http://localhost:3001"
-            className="w-full text-sm px-3 py-2 border border-slate-800 rounded-xl focus:outline-none focus:border-blue-500 bg-slate-950 text-white text-xs px-4 py-3"
+            className="w-full text-sm px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500 bg-white text-slate-800 text-xs px-3 py-2"
           />
         </div>
       </div>
 
       {/* Tùy chọn Logic thông minh Smart Date & Máy tính tiền */}
-      <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 sm:p-5 mb-6 space-y-4">
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 mb-4 space-y-2.5">
         <div className="flex items-start gap-3">
           <input
             id="strictPeriodToggle"
@@ -475,17 +475,17 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
             className="mt-0.5 w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
           />
           <label htmlFor="strictPeriodToggle" className="cursor-pointer">
-            <span className="text-xs font-bold text-slate-200 flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 text-xs font-bold">
               🛡️ Bộ Lọc Thông Minh Smart Date (Múi giờ Việt Nam GMT+7 & Loại trừ hóa đơn sai kỳ)
               <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">Khuyên Dùng</span>
             </span>
-            <p className="text-[11px] text-slate-400 mt-1">
+            <p className="text-[11px] text-slate-500 mt-0.5 text-[11px]">
               Tự động bù trừ chênh lệch múi giờ UTC của Cục Thuế (giải quyết triệt để lỗi ngày 30/09 hiển thị trong Quý 4), đồng thời bảo vệ số liệu kê khai chính xác cho kế toán.
             </p>
           </label>
         </div>
 
-        <div className="flex items-start gap-3 pt-2.5 border-t border-slate-800/80 pt-3.5">
+        <div className="flex items-start gap-3 pt-2.5 border-t border-slate-200 pt-2.5">
           <input
             id="includePosToggle"
             type="checkbox"
@@ -494,11 +494,11 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
             className="mt-0.5 w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
           />
           <label htmlFor="includePosToggle" className="cursor-pointer">
-            <span className="text-xs font-bold text-slate-200 flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 text-xs font-bold">
               🏪 Quét Toàn Diện Hóa Đơn Từ Máy Tính Tiền (POS)
               <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.5 rounded">Không Bỏ Sót HĐ Mua Vào</span>
             </span>
-            <p className="text-[11px] text-slate-400 mt-1">
+            <p className="text-[11px] text-slate-500 mt-0.5 text-[11px]">
               Đảm bảo thu thập trọn vẹn 100% các hóa đơn Mua Vào (như chi phí ăn uống, công tác, xăng dầu, khách sạn, siêu thị... của nhân viên). Hệ thống tự động dùng Gemini AI giải Captcha riêng cho luồng này để tránh bị Cục Thuế chặn.
             </p>
           </label>
@@ -506,7 +506,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
       </div>
 
       {isSyncing && (
-        <div className="bg-slate-950 border border-blue-500/40 rounded-2xl p-5 mb-6 shadow-xl">
+        <div className="bg-blue-50/50 border border-blue-200 rounded-xl p-4 mb-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-blue-800 flex items-center gap-2">
               <Cpu className="w-4 h-4 text-blue-600 animate-spin" />
@@ -516,7 +516,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
               {progress.percent}%
             </span>
           </div>
-          <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden mb-2">
+          <div className="w-full h-3 bg-slate-200 rounded-full overflow-hidden mb-2">
             <div
               className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 transition-all duration-300 ease-out"
               style={{ width: `${progress.percent}%` }}
@@ -538,7 +538,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
           className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold text-white shadow-md transition ${
             isSyncing || !activeAccount
               ? 'bg-slate-300 cursor-not-allowed shadow-none'
-              : 'bg-gradient-to-r from-blue-600 via-cyan-500 to-indigo-600 hover:from-blue-500 hover:to-cyan-400 shadow-xl shadow-blue-600/30 px-8 py-3.5 rounded-2xl text-sm font-black'
+              : 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs px-6 py-2.5 rounded-xl text-xs font-bold'
           }`}
         >
           {isSyncing ? (
@@ -620,12 +620,12 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
       {/* Modal Nâng Cấp Bản Quyền / Giới Hạn 1 MST */}
       {showUpgradeModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl max-w-md w-full p-6 text-slate-100">
+          <div className="bg-white border border-slate-100 rounded-2xl shadow-xl max-w-md w-full p-6 text-slate-800">
             <div className="text-center mb-4">
               <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-2 text-2xl font-bold">
                 👑
               </div>
-              <h3 className="text-base font-black text-white">
+              <h3 className="text-sm font-bold text-slate-900">
                 Mở Khóa Tra Cứu Không Giới Hạn Mã Số Thuế
               </h3>
               <p className="text-xs text-slate-500 mt-1">
@@ -633,8 +633,8 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
               </p>
             </div>
 
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 mb-5 text-slate-300">
-              <h4 className="text-xs font-black text-cyan-400 uppercase tracking-wider mb-2">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 mb-4 text-slate-700">
+              <h4 className="text-xs font-bold text-blue-900 uppercase tracking-wider mb-1.5">
                 Đặc Quyền Gói Pro / Khách Hàng LTP Attendance:
               </h4>
               <ul className="text-xs text-slate-700 space-y-1.5 font-medium">
@@ -663,7 +663,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
                 href="https://zalo.me/0969851396"
                 target="_blank"
                 rel="noreferrer"
-                className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold rounded-lg transition"
+                className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition"
               >
                 <span>Hỗ Trợ Nâng Cấp Bản Pro (Zalo: 0969.851.396)</span>
               </a>
