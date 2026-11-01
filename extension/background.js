@@ -626,8 +626,8 @@ async function handleSyncRequest(payload) {
     const activeLicense = (license_key && license_key !== 'free-lead-magnet') ? license_key : storeData.license_key;
 
     if (!registeredMsts.includes(username)) {
-      if (registeredMsts.length >= 1 && !activeLicense) {
-        throw new Error('LIMIT_EXCEEDED: Bạn đang sử dụng gói Miễn phí (giới hạn 01 Mã số thuế: ' + registeredMsts[0] + '). Để tra cứu thêm MST thứ 2 (' + username + '), vui lòng liên hệ Zalo 0969.851.396 để nâng cấp bản Pro hoặc sử dụng phần mềm chấm công LTP Attendance!');
+      if (registeredMsts.length >= 2 && !activeLicense) {
+        throw new Error('LIMIT_EXCEEDED: Bạn đang sử dụng gói Miễn phí (đã dùng tối đa 02 Mã số thuế: ' + registeredMsts.join(', ') + '). Để tra cứu từ MST thứ 3 trở lên (' + username + '), vui lòng nâng cấp bản Pro hoặc đăng ký sử dụng phần mềm chấm công LTP Attendance!');
       }
       registeredMsts.push(username);
       await chrome.storage.local.set({ registered_msts: registeredMsts });

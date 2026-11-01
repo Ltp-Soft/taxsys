@@ -629,7 +629,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
                 Mở Khóa Tra Cứu Không Giới Hạn Mã Số Thuế
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                {upgradeErrorMsg || 'Phiên bản miễn phí hỗ trợ tối đa 01 Mã số thuế Doanh nghiệp.'}
+                {upgradeErrorMsg || 'Phiên bản miễn phí hỗ trợ tối đa 02 Mã số thuế Doanh nghiệp. Từ MST thứ 3 trở lên, quý khách vui lòng nâng cấp bản PRO hoặc sử dụng phần mềm Chấm Công LTP Attendance.'}
               </p>
             </div>
 
