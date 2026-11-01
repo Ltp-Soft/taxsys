@@ -15,6 +15,17 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
 
   // Quản lý Modal nâng cấp bản quyền khi vượt quá 1 MST
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  // State Thanh toán tự động SePay VietQR cho Tool Thuế
+  const [checkoutEmail, setCheckoutEmail] = useState('');
+  const [checkoutPhone, setCheckoutPhone] = useState('');
+  const [checkoutPlan, setCheckoutPlan] = useState('PRO_ANNUAL');
+  const [checkoutOrder, setCheckoutOrder] = useState(null);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutSuccess, setCheckoutSuccess] = useState(false);
+  const [manualLicenseInput, setManualLicenseInput] = useState('');
+  const [manualLicenseMsg, setManualLicenseMsg] = useState(null);
+  const [activeTabModal, setActiveTabModal] = useState('buy'); // 'buy' | 'manual'
+
   const [upgradeErrorMsg, setUpgradeErrorMsg] = useState('');
 
   // Quản lý Modal nhập Captcha tay khi offline/chưa bật AI
@@ -617,64 +628,216 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
         </div>
       )}
 
-      {/* Modal Nâng Cấp Bản Quyền / Giới Hạn 1 MST */}
+      {/* Modal Thanh Toán & Kích Hoạt Bản Quyền Tự Động SePay VietQR */}
       {showUpgradeModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-100 rounded-2xl shadow-xl max-w-md w-full p-6 text-slate-800">
-            <div className="text-center mb-4">
-              <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-2 text-2xl font-bold">
-                👑
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6 text-slate-800 border border-slate-100 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">👑</span>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Bản Quyền PRO Tra Cứu Không Giới Hạn MST
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Hệ thống thanh toán tự động 24/7 kích hoạt trong 5 giây
+                  </p>
+                </div>
               </div>
-              <h3 className="text-sm font-bold text-slate-900">
-                Mở Khóa Tra Cứu Không Giới Hạn Mã Số Thuế
-              </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                {upgradeErrorMsg || 'Phiên bản miễn phí hỗ trợ tối đa 02 Mã số thuế Doanh nghiệp. Từ MST thứ 3 trở lên, quý khách vui lòng nâng cấp bản PRO hoặc sử dụng phần mềm Chấm Công LTP Attendance.'}
-              </p>
-            </div>
-
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 mb-4 text-slate-700">
-              <h4 className="text-xs font-bold text-blue-900 uppercase tracking-wider mb-1.5">
-                Đặc Quyền Gói Pro / Khách Hàng LTP Attendance:
-              </h4>
-              <ul className="text-xs text-slate-700 space-y-1.5 font-medium">
-                <li className="flex items-center gap-1.5">
-                  <span className="text-emerald-600 font-bold">✓</span> Không giới hạn số lượng công ty & MST
-                </li>
-                <li className="flex items-center gap-1.5">
-                  <span className="text-emerald-600 font-bold">✓</span> Tự động giải Captcha bằng Google Gemini AI Pro
-                </li>
-                <li className="flex items-center gap-1.5">
-                  <span className="text-emerald-600 font-bold">✓</span> Tặng kèm khi đăng ký Máy Chấm Công LTP Attendance
-                </li>
-              </ul>
-            </div>
-
-            <div className="space-y-2">
-              <a
-                href="https://ltp-soft.com"
-                target="_blank"
-                rel="noreferrer"
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-bold rounded-lg shadow-md transition"
-              >
-                <span>Đăng Ký LTP Attendance (Dùng Thử 60 Ngày Miễn Phí)</span>
-              </a>
-              <a
-                href="https://zalo.me/0969851396"
-                target="_blank"
-                rel="noreferrer"
-                className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition"
-              >
-                <span>Hỗ Trợ Nâng Cấp Bản Pro (Zalo: 0969.851.396)</span>
-              </a>
               <button
-                type="button"
-                onClick={() => setShowUpgradeModal(false)}
-                className="w-full py-2 text-xs font-medium text-slate-400 hover:text-slate-600 transition"
+                onClick={() => { setShowUpgradeModal(false); setCheckoutOrder(null); setCheckoutSuccess(false); }}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1"
               >
-                Đóng
+                ✕
               </button>
             </div>
+
+            {/* Tab chuyển đổi: Mua tự động / Kích hoạt mã có sẵn */}
+            <div className="flex border border-slate-200 rounded-xl p-1 bg-slate-100 mb-4 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setActiveTabModal('buy')}
+                className={`flex-1 py-1.5 rounded-lg transition ${activeTabModal === 'buy' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600'}`}
+              >
+                Mua Gói Tự Động VietQR
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTabModal('manual')}
+                className={`flex-1 py-1.5 rounded-lg transition ${activeTabModal === 'manual' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600'}`}
+              >
+                Tôi Đã Có License Key
+              </button>
+            </div>
+
+            {/* TAB 1: MUA TỰ ĐỘNG QUA SEPAY */}
+            {activeTabModal === 'buy' && (
+              <>
+                {checkoutSuccess ? (
+                  <div className="text-center py-6">
+                    <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl font-bold">
+                      ✓
+                    </div>
+                    <h4 className="text-base font-bold text-slate-900 mb-1">Thanh Toán Thành Công!</h4>
+                    <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+                      Bản quyền PRO đã được <strong>tự động kích hoạt ngay trên máy tính của bạn</strong>. Bạn có thể tra cứu không giới hạn mã số thuế.
+                    </p>
+                    <button
+                      onClick={() => { setShowUpgradeModal(false); setCheckoutOrder(null); setCheckoutSuccess(false); }}
+                      className="px-6 py-2 bg-blue-600 text-white rounded-xl font-bold text-xs shadow-xs"
+                    >
+                      Bắt Đầu Sử Dụng Ngay
+                    </button>
+                  </div>
+                ) : checkoutOrder ? (
+                  /* Đang hiển thị mã QR VietQR để quét */
+                  <div className="space-y-4 text-center">
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl text-xs text-blue-900 leading-relaxed">
+                      Mở ứng dụng Ngân hàng quét mã QR bên dưới. Hệ thống sẽ <strong>tự động kích hoạt trong 5-10 giây</strong> khi nhận được tiền.
+                    </div>
+
+                    <div className="inline-block p-2 bg-white border border-slate-200 rounded-2xl shadow-sm">
+                      <img
+                        src={checkoutOrder.qr_url}
+                        alt="Mã VietQR"
+                        className="w-56 h-auto object-contain mx-auto rounded-xl"
+                      />
+                    </div>
+
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-left text-xs space-y-1.5 font-medium">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Số tiền:</span>
+                        <strong className="text-blue-700 font-bold font-mono">{(checkoutOrder.amount).toLocaleString('vi-VN')} đ</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Nội dung chuyển khoản:</span>
+                        <strong className="text-slate-900 font-mono bg-amber-100 px-2 py-0.5 rounded text-amber-900 font-bold">{checkoutOrder.id}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Chủ tài khoản:</span>
+                        <span className="text-slate-800 font-bold">{checkoutOrder.bank_account_name}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Trạng thái:</span>
+                        <span className="text-amber-600 font-bold flex items-center gap-1">
+                          <RefreshCw className="w-3 h-3 animate-spin" /> Đang chờ ngân hàng xác nhận...
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setCheckoutOrder(null)}
+                        className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+                      >
+                        Quay Lại
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Form chọn gói & điền thông tin */
+                  <form onSubmit={handleCreatePaymentOrder} className="space-y-3.5">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div
+                        onClick={() => setCheckoutPlan('PRO_ANNUAL')}
+                        className={`p-3 rounded-xl border cursor-pointer transition text-left ${checkoutPlan === 'PRO_ANNUAL' ? 'border-blue-600 bg-blue-50/60 shadow-xs ring-1 ring-blue-500' : 'border-slate-200 hover:border-slate-300'}`}
+                      >
+                        <span className="block text-[11px] font-bold text-blue-700 uppercase">Gói 1 Năm</span>
+                        <strong className="text-sm font-black text-slate-900">399.000 đ</strong>
+                        <p className="text-[10px] text-slate-500 mt-0.5">Không giới hạn MST</p>
+                      </div>
+
+                      <div
+                        onClick={() => setCheckoutPlan('PRO_LIFETIME')}
+                        className={`p-3 rounded-xl border cursor-pointer transition text-left ${checkoutPlan === 'PRO_LIFETIME' ? 'border-blue-600 bg-blue-50/60 shadow-xs ring-1 ring-blue-500' : 'border-slate-200 hover:border-slate-300'}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-amber-700 uppercase">Trọn Đời</span>
+                          <span className="bg-amber-100 text-amber-800 text-[9px] font-bold px-1.5 py-0.2 rounded">Tiết kiệm</span>
+                        </div>
+                        <strong className="text-sm font-black text-slate-900">599.000 đ</strong>
+                        <p className="text-[10px] text-slate-500 mt-0.5">Dùng vĩnh viễn</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Email Nhận Bản Quyền <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        placeholder="ketoan@congty.com"
+                        value={checkoutEmail}
+                        onChange={(e) => setCheckoutEmail(e.target.value)}
+                        className="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Số Điện Thoại / Zalo (Tùy chọn)
+                      </label>
+                      <input
+                        type="tel"
+                        placeholder="0912 345 678"
+                        value={checkoutPhone}
+                        onChange={(e) => setCheckoutPhone(e.target.value)}
+                        className="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        type="submit"
+                        disabled={checkoutLoading}
+                        className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-2"
+                      >
+                        {checkoutLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : '👉 Tạo Mã VietQR Thanh Toán Ngay'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </>
+            )}
+
+            {/* TAB 2: KÍCH HOẠT LICENSE KEY CÓ SẴN */}
+            {activeTabModal === 'manual' && (
+              <form onSubmit={handleActivateManualKey} className="space-y-3.5">
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Nếu bạn được tặng bản quyền kèm theo hợp đồng phần mềm Chấm Công LTP Attendance hoặc đã có License Key, hãy nhập mã vào đây:
+                </p>
+
+                {manualLicenseMsg && (
+                  <div className={`p-3 rounded-xl text-xs font-semibold ${manualLicenseMsg.type === 'SUCCESS' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
+                    {manualLicenseMsg.text}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Mã License Key</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="VD: LTP-TAX-12345-XXXX"
+                    value={manualLicenseInput}
+                    onChange={(e) => setManualLicenseInput(e.target.value.toUpperCase())}
+                    className="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500 font-mono font-bold uppercase"
+                  />
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition"
+                  >
+                    Kích Hoạt Bản Quyền Ngay
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
