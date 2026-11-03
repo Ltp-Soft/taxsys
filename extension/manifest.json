@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "LTP TaxSync - Tải & Tổng Hợp Hóa Đơn Thuế AI Tự Động",
   "short_name": "LTP TaxSync",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Tự động tải toàn bộ hóa đơn thuế mua vào, bán ra thành file Excel 2 Sheet chuẩn kế toán. Phát triển bởi LTP Soft (ltp-soft.com).",
   "homepage_url": "https://tax.ltp-soft.com",
   "author": "Công ty TNHH TMDV Lê Tài Phát",
