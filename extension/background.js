@@ -279,7 +279,34 @@ async function authenticateUser(apiRunner, config, username, password, manualCap
       }
 
       if (attempts >= maxRetries) {
-        throw new Error(`Xác thực thất bại sau ${maxRetries} lần thử: ${err.message}`);
+        console.warn(`[Auth] AI đã thử ${maxRetries} lần nhưng không thành công. Lấy mã mới và chuyển sang Modal cho người dùng.`);
+        broadcastProgress({
+          stage: 'AUTH_FAILED_MAX_RETRIES',
+          step: `AI đã thử giải 3 lần chưa khớp. Đang tải mã Captcha mới để bạn nhập trực tiếp...`,
+          percent: 8
+        });
+
+        try {
+          const freshCaptcha = await apiRunner.requestTax(config.endpoints.captcha.path, { method: 'GET' });
+          const freshCkey = freshCaptcha.key || freshCaptcha.ckey;
+          const freshContent = freshCaptcha.content || freshCaptcha.svg || freshCaptcha.image;
+
+          broadcastProgress({
+            stage: 'NEED_MANUAL_CAPTCHA',
+            step: `AI đã thử giải 3 lần không khớp. Vui lòng nhập mã Captcha hiển thị trên màn hình để tiếp tục.`,
+            captcha_svg: freshContent,
+            ckey: freshCkey,
+            percent: 8
+          });
+
+          const manualErr = new Error('NEED_MANUAL_CAPTCHA');
+          manualErr.captcha_svg = freshContent;
+          manualErr.ckey = freshCkey;
+          throw manualErr;
+        } catch (fetchErr) {
+          if (fetchErr.message === 'NEED_MANUAL_CAPTCHA') throw fetchErr;
+          throw new Error(`Xác thực thất bại sau ${maxRetries} lần thử: ${err.message}`);
+        }
       }
 
       await rateLimiter.wait(1000);

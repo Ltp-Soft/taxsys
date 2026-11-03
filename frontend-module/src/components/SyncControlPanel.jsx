@@ -31,11 +31,13 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
 
   const [upgradeErrorMsg, setUpgradeErrorMsg] = useState('');
 
-  // Quản lý Modal nhập Captcha tay khi offline/chưa bật AI
+  // Quản lý Modal nhập Captcha tay khi AI thử 3 lần không khớp hoặc người dùng muốn tự nhập
   const [showCaptchaModal, setShowCaptchaModal] = useState(false);
   const [captchaSvg, setCaptchaSvg] = useState('');
   const [captchaCkey, setCaptchaCkey] = useState('');
   const [manualCode, setManualCode] = useState('');
+  const [isRefreshingCaptcha, setIsRefreshingCaptcha] = useState(false);
+  const [captchaModalNote, setCaptchaModalNote] = useState('');
 
   const [extensionStatus, setExtensionStatus] = useState('checking');
   const [progress, setProgress] = useState({
@@ -45,6 +47,52 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
     purchaseCount: 0,
     soldCount: 0
   });
+
+  // Hàm lấy mã Captcha mới (ưu tiên qua Extension, tự động fallback qua API nếu khách dùng bản Extension cũ trên Store)
+  const handleRefreshCaptcha = async (customNote = null) => {
+    if (customNote !== null) setCaptchaModalNote(customNote);
+    setIsRefreshingCaptcha(true);
+    setManualCode('');
+
+    let resolvedByExt = false;
+    const reqId = 'cap_' + Date.now();
+
+    const extListener = (ev) => {
+      if (ev.data?.type === 'TAX_EXTENSION_GET_CAPTCHA_RESULT' && ev.data?.requestId === reqId) {
+        const res = ev.data.response;
+        if (res && res.success && res.data && (res.data.content || res.data.svg)) {
+          resolvedByExt = true;
+          setCaptchaSvg(res.data.content || res.data.svg || '');
+          setCaptchaCkey(res.data.key || res.data.ckey || '');
+          setIsRefreshingCaptcha(false);
+        }
+        window.removeEventListener('message', extListener);
+      }
+    };
+    window.addEventListener('message', extListener);
+    window.postMessage({ type: 'TAX_EXTENSION_GET_CAPTCHA', requestId: reqId }, '*');
+
+    setTimeout(async () => {
+      window.removeEventListener('message', extListener);
+      if (!resolvedByExt) {
+        try {
+          const effectiveBackend = (backendUrl === 'http://localhost:3001' && typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
+            ? window.location.origin
+            : backendUrl;
+          const resp = await fetch(`${effectiveBackend.replace(/\/+$/, '')}/api/v1/solve-captcha`);
+          const data = await resp.json();
+          if (data && data.success && data.content) {
+            setCaptchaSvg(data.content);
+            setCaptchaCkey(data.ckey || '');
+          }
+        } catch (err) {
+          console.warn('[CaptchaFallback] Không lấy được captcha từ fallback API:', err);
+        } finally {
+          setIsRefreshingCaptcha(false);
+        }
+      }
+    }, 650);
+  };
 
   useEffect(() => {
     let timeoutId;
@@ -66,82 +114,45 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
         });
 
         if (d.stage === 'NEED_MANUAL_CAPTCHA') {
+          console.log('[Sync] AI failed 3 times or requested manual captcha. Opening modal for user.');
           const svgData = d.captcha_svg || '';
           const ckeyData = d.ckey || '';
-          setCaptchaSvg(svgData);
-          setCaptchaCkey(ckeyData);
-
-          // Cố gắng tự giải Captcha serverless bằng Google Gemini AI trước khi bắt nhập tay
+          setCaptchaModalNote('⚠️ Mã bảo vệ lần này có độ nhiễu cao. Vui lòng nhìn ảnh bên dưới và nhập 6 ký tự để tiếp tục:');
+          setIsSyncing(false);
+          setShowCaptchaModal(true);
           if (svgData && ckeyData) {
-            setProgress(prev => ({
-              ...prev,
-              step: '🤖 Đang tự động giải mã Captcha bằng Google Gemini AI...',
-              percent: 9
-            }));
-            const effectiveBackend = (backendUrl === 'http://localhost:3001' && typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
-              ? window.location.origin
-              : backendUrl;
-
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 6000);
-
-            fetch(`${effectiveBackend}/api/v1/solve-captcha`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ image: svgData, ckey: ckeyData }),
-              signal: controller.signal
-            })
-              .then(r => r.json())
-              .then(data => {
-                clearTimeout(timeoutId);
-                if (data && data.success && data.code) {
-                  console.log('[AutoCaptcha] Solved successfully by AI serverless in <2s:', data.code);
-                  handleStartSync(data.code, ckeyData);
-                } else {
-                  setShowCaptchaModal(true);
-                }
-              })
-              .catch(err => {
-                clearTimeout(timeoutId);
-                console.warn('[AutoCaptcha] Fast fallback to manual modal:', err);
-                setShowCaptchaModal(true);
-              });
+            setCaptchaSvg(svgData);
+            setCaptchaCkey(ckeyData);
           } else {
-            setShowCaptchaModal(true);
+            handleRefreshCaptcha();
           }
+        }
+      }
+
+      if (event.data?.type === 'TAX_EXTENSION_GET_CAPTCHA_RESULT') {
+        setIsRefreshingCaptcha(false);
+        const res = event.data.response;
+        if (res && res.success && res.data) {
+          setCaptchaSvg(res.data.content || res.data.svg || '');
+          setCaptchaCkey(res.data.key || res.data.ckey || '');
+          setManualCode('');
         }
       }
 
       if (event.data?.type === 'TAX_EXTENSION_SYNC_RESULT') {
         const res = event.data.response;
         if (res && res.need_manual_captcha) {
+          console.log('[SyncResult] Received need_manual_captcha. Opening modal.');
           const svgData = res.captcha_svg || '';
           const ckeyData = res.ckey || '';
-          setCaptchaSvg(svgData);
-          setCaptchaCkey(ckeyData);
-
+          setCaptchaModalNote('⚠️ AI đã thử tự động 3 lần chưa khớp. Vui lòng nhìn ảnh và nhập mã Captcha bên dưới:');
+          setIsSyncing(false);
+          setShowCaptchaModal(true);
           if (svgData && ckeyData) {
-            const effectiveBackend = (backendUrl === 'http://localhost:3001' && typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
-              ? window.location.origin
-              : backendUrl;
-
-            fetch(`${effectiveBackend}/api/v1/solve-captcha`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ image: svgData, ckey: ckeyData })
-            })
-              .then(r => r.json())
-              .then(data => {
-                if (data && data.success && data.code) {
-                  console.log('[AutoCaptcha] Solved successfully by AI serverless:', data.code);
-                  handleStartSync(data.code, ckeyData);
-                } else {
-                  setShowCaptchaModal(true);
-                }
-              })
-              .catch(() => setShowCaptchaModal(true));
+            setCaptchaSvg(svgData);
+            setCaptchaCkey(ckeyData);
           } else {
-            setShowCaptchaModal(true);
+            handleRefreshCaptcha();
           }
           return;
         }
@@ -163,9 +174,24 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
           });
         } else {
           const err = res?.error || 'Lỗi không xác định';
+          const errLower = err.toLowerCase();
           if (err.includes('LIMIT_EXCEEDED')) {
             setUpgradeErrorMsg(err.replace('LIMIT_EXCEEDED: ', ''));
             setShowUpgradeModal(true);
+          } else if (errLower.includes('sai mật khẩu') || errLower.includes('mật khẩu không đúng') || errLower.includes('tài khoản không tồn tại') || errLower.includes('sai tên đăng nhập')) {
+            alert(`Đăng nhập thất bại: ${err}`);
+          } else if (
+            err.includes('Xác thực thất bại sau') ||
+            errLower.includes('captcha') ||
+            errLower.includes('mã bảo vệ') ||
+            errLower.includes('không nhận được token') ||
+            errLower.includes('400') ||
+            errLower.includes('401')
+          ) {
+            // Bắt mọi lỗi giải Captcha thất bại (kể cả trên bản Extension cũ từ Chrome Web Store) -> mở ngay bảng nhập Captcha tay!
+            console.log('[SyncResult] Captcha failed after retries, opening manual captcha modal with fresh captcha.');
+            setShowCaptchaModal(true);
+            handleRefreshCaptcha('⚠️ Giải mã tự động chưa khớp hoặc mã vừa nhập bị sai. Hệ thống đã tải mã Captcha mới, vui lòng nhập 6 ký tự bên dưới:');
           } else {
             alert(`Đồng bộ thất bại: ${err}`);
           }
@@ -658,7 +684,26 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
         </div>
       )}
 
-      <div className="flex items-center justify-end gap-3">
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        <button
+          type="button"
+          onClick={() => {
+            if (!activeAccount) {
+              alert('Vui lòng chọn hoặc thêm một Mã Số Thuế Doanh Nghiệp trước khi đồng bộ.');
+              return;
+            }
+            setIsSyncing(false);
+            setShowCaptchaModal(true);
+            handleRefreshCaptcha('Nhập 6 ký tự mã bảo vệ từ Cổng Thuế bên dưới để xác thực trực tiếp:');
+          }}
+          disabled={!activeAccount}
+          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 transition cursor-pointer disabled:opacity-50"
+          title="Mở bảng tự nhập mã Captcha bằng mắt thường"
+        >
+          <Key className="w-3.5 h-3.5 text-amber-600" />
+          <span>Nhập Captcha Thủ Công</span>
+        </button>
+
         <button
           onClick={() => handleStartSync()}
           disabled={isSyncing || !activeAccount}
@@ -682,61 +727,84 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
         </button>
       </div>
 
-      {/* Modal Nhập Captcha Thủ Công (Khi test offline hoặc chưa có AI) */}
+      {/* Modal Nhập Captcha Thủ Công (Tự động bật khi AI thử 3 lần chưa khớp hoặc khách chủ động mở) */}
       {showCaptchaModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-slate-800">
-            <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-100">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 text-slate-800 border border-slate-100">
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Key className="w-4 h-4 text-blue-600" /> Xác Thực Mã Captcha
+                <Key className="w-4 h-4 text-blue-600" /> Xác Thực Mã Bảo Vệ (Captcha) Cổng Thuế
               </h3>
               <button
                 onClick={() => { setShowCaptchaModal(false); setIsSyncing(false); }}
-                className="text-slate-400 hover:text-slate-600"
+                className="text-slate-400 hover:text-slate-600 text-base font-bold px-1"
               >
                 ✕
               </button>
             </div>
 
-            <p className="text-xs text-slate-500 mb-3">
-              Mã bảo vệ từ Cổng Thuế Tổng Cục Thuế. Vui lòng nhập các ký tự nhìn thấy bên dưới:
-            </p>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-xs text-amber-900 leading-relaxed">
+              {captchaModalNote || 'Mã bảo vệ từ Cổng Thuế Tổng Cục Thuế. Vui lòng nhìn ảnh bên dưới và nhập 6 ký tự:'}
+            </div>
 
-            {/* Hiển thị SVG Captcha */}
-            {captchaSvg && (
-              <div
-                className="bg-amber-50/50 border border-amber-200 rounded-lg p-2 mb-3 flex items-center justify-center overflow-hidden"
-                dangerouslySetInnerHTML={{ __html: captchaSvg }}
-              />
-            )}
+            {/* Khung hiển thị SVG Captcha + Nút Đổi Mã Khác */}
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex-1 bg-white border-2 border-slate-200 rounded-xl p-3 min-h-[68px] flex items-center justify-center overflow-hidden shadow-inner">
+                {isRefreshingCaptcha ? (
+                  <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+                    <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+                    <span>Đang tải mã Captcha mới...</span>
+                  </div>
+                ) : captchaSvg ? (
+                  <div
+                    className="scale-125 transform origin-center flex items-center justify-center"
+                    dangerouslySetInnerHTML={{ __html: captchaSvg }}
+                  />
+                ) : (
+                  <span className="text-xs text-slate-400">Chưa có ảnh Captcha</span>
+                )}
+              </div>
 
-            <form onSubmit={submitManualCaptcha} className="space-y-3">
+              <button
+                type="button"
+                onClick={() => handleRefreshCaptcha()}
+                disabled={isRefreshingCaptcha}
+                className="flex flex-col items-center justify-center gap-1 px-3 py-3 h-[68px] bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 hover:border-blue-300 rounded-xl text-[11px] font-bold transition shrink-0 cursor-pointer disabled:opacity-50"
+                title="Đổi mã Captcha khác nếu ảnh hiện tại khó nhìn"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRefreshingCaptcha ? 'animate-spin text-blue-600' : ''}`} />
+                <span>Đổi mã</span>
+              </button>
+            </div>
+
+            <form onSubmit={submitManualCaptcha} className="space-y-4">
               <div>
                 <input
                   type="text"
                   required
                   autoFocus
                   maxLength={8}
-                  placeholder="Nhập mã Captcha vào đây"
+                  placeholder="NHẬP 6 KÝ TỰ (VD: G868EA)"
                   value={manualCode}
                   onChange={(e) => setManualCode(e.target.value.toUpperCase())}
-                  className="w-full text-center text-lg font-mono font-bold tracking-widest px-3 py-2 border-2 border-blue-500 rounded-lg focus:outline-none"
+                  className="w-full text-center text-xl font-mono font-extrabold tracking-[0.25em] px-4 py-3 border-2 border-blue-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-200 uppercase"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex justify-end gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => { setShowCaptchaModal(false); setIsSyncing(false); }}
-                  className="px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition"
+                  className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
                 >
                   Hủy Bỏ
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition"
+                  disabled={isRefreshingCaptcha || !manualCode.trim()}
+                  className="px-6 py-2.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-xl shadow-sm transition cursor-pointer"
                 >
-                  Xác Nhận & Tiếp Tục
+                  Xác Nhận & Đồng Bộ Ngay
                 </button>
               </div>
             </form>

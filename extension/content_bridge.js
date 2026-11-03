@@ -52,6 +52,16 @@ window.addEventListener('message', (event) => {
     });
   }
 
+  if (type === 'TAX_EXTENSION_GET_CAPTCHA') {
+    chrome.runtime.sendMessage({ type: 'GET_CAPTCHA' }, (res) => {
+      window.postMessage({
+        type: 'TAX_EXTENSION_GET_CAPTCHA_RESULT',
+        requestId: requestId,
+        response: res
+      }, '*');
+    });
+  }
+
   if (type === 'TAX_EXTENSION_PING') {
     chrome.runtime.sendMessage({ type: 'PING' }, (res) => {
       window.postMessage({

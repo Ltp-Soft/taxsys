@@ -1,44 +1,127 @@
 const { GoogleGenAI } = require('@google/genai');
+const zlib = require('zlib');
 
 const FALLBACK_GEMINI_KEY = Buffer.from('QVEuQWI4Uk42TE5sd3ZMeEItaFk3X0NHaTQxVEZQdzBaQ0tDOEhIaXdJM1g0VE1rZ0xKZ2c=', 'base64').toString('utf-8');
 
-function normalizeAndSortSvgCaptcha(svgString) {
-  try {
-    const pathRegex = /<path\b[^>]*>/gi;
-    const matches = svgString.match(pathRegex) || [];
-    const charPaths = [];
+function svgToPngBase64(svgString) {
+  const scale = 1.5;
+  const width = 300;
+  const height = 60;
+  const pixels = new Uint8Array(width * height);
 
-    for (const tag of matches) {
-      if (tag.includes('fill="none"') || (tag.includes('stroke=') && !tag.includes('fill='))) {
-        continue;
-      }
-      const dMatch = tag.match(/\bd="([^"]+)"/i);
-      if (!dMatch) continue;
-      const d = dMatch[1];
-      const coordRegex = /[MLQ](\d+\.?\d*)\s+(\d+\.?\d*)/gi;
-      let cm;
-      const xs = [];
-      while ((cm = coordRegex.exec(d)) !== null) {
-        xs.push(parseFloat(cm[1]));
-      }
-      if (xs.length > 5) {
-        const minX = Math.min(...xs);
-        charPaths.push({ minX, tag });
+  const pathRegex = /<path\b[^>]*>/gi;
+  const matches = svgString.match(pathRegex) || [];
+
+  for (const tag of matches) {
+    if (tag.includes('fill="none"') || (tag.includes('stroke=') && !tag.includes('fill='))) {
+      continue;
+    }
+    const dMatch = tag.match(/\bd="([^"]+)"/i);
+    if (!dMatch) continue;
+    const d = dMatch[1];
+
+    const polygons = [];
+    let currentPoly = [];
+    let cx = 0, cy = 0;
+    const cmdRegex = /([MLQZ])\s*([^MLQZ]*)/gi;
+    let m;
+    while ((m = cmdRegex.exec(d)) !== null) {
+      const type = m[1].toUpperCase();
+      const args = m[2].trim().split(/[\s,]+/).filter(Boolean).map(Number);
+      if (type === 'M' && args.length >= 2) {
+        if (currentPoly.length > 0) polygons.push(currentPoly);
+        cx = args[0] * scale;
+        cy = args[1] * scale;
+        currentPoly = [[cx, cy]];
+      } else if (type === 'L' && args.length >= 2) {
+        cx = args[0] * scale;
+        cy = args[1] * scale;
+        currentPoly.push([cx, cy]);
+      } else if (type === 'Q' && args.length >= 4) {
+        const qx = args[0] * scale, qy = args[1] * scale;
+        const ex = args[2] * scale, ey = args[3] * scale;
+        for (let t = 0.25; t <= 1.0; t += 0.25) {
+          const it = 1 - t;
+          const px = it * it * cx + 2 * it * t * qx + t * t * ex;
+          const py = it * it * cy + 2 * it * t * qy + t * t * ey;
+          currentPoly.push([px, py]);
+        }
+        cx = ex; cy = ey;
+      } else if (type === 'Z') {
+        if (currentPoly.length > 0) {
+          polygons.push(currentPoly);
+          currentPoly = [];
+        }
       }
     }
+    if (currentPoly.length > 0) polygons.push(currentPoly);
 
-    if (charPaths.length >= 4) {
-      charPaths.sort((a, b) => a.minX - b.minX);
-      return {
-        sortedSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="40" viewBox="0,0,200,40">' +
-                   charPaths.map(c => c.tag).join('') + '</svg>',
-        count: charPaths.length
-      };
+    for (let y = 0; y < height; y++) {
+      const scanY = y + 0.5;
+      const intersections = [];
+      for (const poly of polygons) {
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+          const [x1, y1] = poly[i];
+          const [x2, y2] = poly[j];
+          if ((y1 <= scanY && y2 > scanY) || (y2 <= scanY && y1 > scanY)) {
+            const x = x1 + ((scanY - y1) / (y2 - y1)) * (x2 - x1);
+            intersections.push(x);
+          }
+        }
+      }
+      intersections.sort((a, b) => a - b);
+      for (let i = 0; i + 1 < intersections.length; i += 2) {
+        const startX = Math.max(0, Math.floor(intersections[i]));
+        const endX = Math.min(width - 1, Math.ceil(intersections[i + 1]));
+        for (let x = startX; x <= endX; x++) {
+          pixels[y * width + x] = 1;
+        }
+      }
     }
-  } catch (e) {
-    console.warn('SVG sorting error, fallback to raw:', e);
   }
-  return { sortedSvg: svgString, count: 0 };
+
+  const rawData = Buffer.alloc(height * (1 + width));
+  for (let y = 0; y < height; y++) {
+    const rowStart = y * (1 + width);
+    rawData[rowStart] = 0;
+    for (let x = 0; x < width; x++) {
+      rawData[rowStart + 1 + x] = pixels[y * width + x] ? 15 : 255;
+    }
+  }
+  const compressed = zlib.deflateSync(rawData);
+
+  const crcTable = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    crcTable[n] = c;
+  }
+  function crc32(buf) {
+    let c = -1;
+    for (let i = 0; i < buf.length; i++) {
+      c = (c >>> 8) ^ crcTable[(c ^ buf[i]) & 0xff];
+    }
+    return (c ^ -1) >>> 0;
+  }
+  function chunk(type, data) {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length, 0);
+    const typeAndData = Buffer.concat([Buffer.from(type), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(typeAndData), 0);
+    return Buffer.concat([len, typeAndData, crc]);
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 0;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', compressed),
+    chunk('IEND', Buffer.alloc(0))
+  ]).toString('base64');
 }
 
 class GeminiService {
@@ -75,58 +158,36 @@ class GeminiService {
 
     try {
       const isSvg = typeof imageData === 'string' && (imageData.includes('<svg') || imageData.includes('<SVG'));
-      let contents;
+      let mimeType = 'image/png';
+      let cleanBase64 = imageData;
 
       if (isSvg) {
-        const { sortedSvg, count } = normalizeAndSortSvgCaptcha(imageData);
-        contents = [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: `You are an expert OCR system for Vietnamese tax authority CAPTCHAs (hoadondientu.gdt.gov.vn).
-The character paths in this SVG markup have been sorted in STRICT LEFT-TO-RIGHT READING ORDER.
-Here is the CAPTCHA SVG markup:
-\`\`\`xml
-${sortedSvg}
-\`\`\`
-Each path represents exactly one character from left to right.
-Extract the exact ${count > 0 ? count : '5 to 6'} alphanumeric characters displayed (uppercase letters and digits).
-Return ONLY valid JSON in format: {"code": "XXXXX"}`
-              }
-            ]
-          }
-        ];
-      } else {
-        let mimeType = 'image/png';
-        let cleanBase64 = imageData;
-
-        // Handle data URL prefix
-        if (typeof imageData === 'string' && imageData.startsWith('data:')) {
-          const matches = imageData.match(/^data:([^;]+);base64,(.+)$/);
-          if (matches) {
-            mimeType = matches[1];
-            cleanBase64 = matches[2];
-          }
+        cleanBase64 = svgToPngBase64(imageData);
+        mimeType = 'image/png';
+      } else if (typeof imageData === 'string' && imageData.startsWith('data:')) {
+        const matches = imageData.match(/^data:([^;]+);base64,(.+)$/);
+        if (matches) {
+          mimeType = matches[1];
+          cleanBase64 = matches[2];
         }
-
-        const promptText = 'Read the exact alphanumeric characters in this CAPTCHA image. Ignore horizontal strike-through lines and background noise. Return ONLY valid JSON format: {"code": "XXXXX"}.';
-
-        contents = [
-          {
-            role: 'user',
-            parts: [
-              { text: promptText },
-              {
-                inlineData: {
-                  mimeType: mimeType,
-                  data: cleanBase64
-                }
-              }
-            ]
-          }
-        ];
       }
+
+      const promptText = 'Read the exact 6 alphanumeric characters (uppercase letters A-Z and digits 0-9) in this CAPTCHA image from left to right. Return ONLY valid JSON format: {"code": "XXXXXX"}.';
+
+      const contents = [
+        {
+          role: 'user',
+          parts: [
+            { text: promptText },
+            {
+              inlineData: {
+                mimeType: mimeType,
+                data: cleanBase64
+              }
+            }
+          ]
+        }
+      ];
 
       const candidateModels = [this.modelName || 'gemini-2.5-flash', 'gemini-2.5-flash'];
       let response = null;
