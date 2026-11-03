@@ -418,7 +418,7 @@ export async function exportInvoicesToExcel({
 
     sheet.mergeCells('A3:I3');
     const noteCell = sheet.getCell('A3');
-    noteCell.value = `(Tự động tính thuế GTGT phải nộp / còn được khấu trừ & Phân loại hóa đơn từ 20 triệu bắt buộc thanh toán qua Ngân hàng)`;
+    noteCell.value = `(Tự động tính thuế GTGT phải nộp / còn được khấu trừ & Phân loại hóa đơn từ 5 triệu bắt buộc thanh toán qua Ngân hàng)`;
     noteCell.font = { name: 'Times New Roman', size: 10, italic: true, color: { argb: 'FF7F7F7F' } };
     noteCell.alignment = { horizontal: 'center', vertical: 'middle' };
     sheet.getRow(3).height = 18;
@@ -520,25 +520,25 @@ export async function exportInvoicesToExcel({
       }
     }
 
-    // PHẦN II: BẢNG ĐỐI SOÁT HÓA ĐƠN MUA VÀO TỪ 20 TRIỆU ĐỒNG (BẮT BUỘC CHUYỂN KHOẢN NGÂN HÀNG)
+    // PHẦN II: BẢNG ĐỐI SOÁT HÓA ĐƠN MUA VÀO TỪ 5 TRIỆU ĐỒNG (BẮT BUỘC CHUYỂN KHOẢN NGÂN HÀNG)
     const validPurchaseList = purchaseInvoices.filter(i => 
       i.is_valid_for_tax !== false && 
       i.trang_thai_hoa_don !== '4' && 
       i.trang_thai_hoa_don !== '6'
     );
 
-    // Hóa đơn >= 20 triệu: Sắp xếp theo giá trị thanh toán giảm dần
+    // Hóa đơn >= 5 triệu: Sắp xếp theo giá trị thanh toán giảm dần
     const bankInvoices = validPurchaseList
-      .filter(i => (Number(i.tong_tien_thanh_toan) || 0) >= 20000000)
+      .filter(i => (Number(i.tong_tien_thanh_toan) || 0) >= 5000000)
       .sort((a, b) => (Number(b.tong_tien_thanh_toan) || 0) - (Number(a.tong_tien_thanh_toan) || 0));
 
-    // Hóa đơn < 20 triệu
+    // Hóa đơn < 5 triệu
     const cashInvoices = validPurchaseList
-      .filter(i => (Number(i.tong_tien_thanh_toan) || 0) < 20000000);
+      .filter(i => (Number(i.tong_tien_thanh_toan) || 0) < 5000000);
 
     sheet.mergeCells('A12:I12');
     const sec2 = sheet.getCell('A12');
-    sec2.value = `II. DANH SÁCH HÓA ĐƠN MUA VÀO TỪ 20 TRIỆU ĐỒNG (BẮT BUỘC THANH TOÁN QUA NGÂN HÀNG - ${bankInvoices.length} HÓA ĐƠN)`;
+    sec2.value = `II. DANH SÁCH HÓA ĐƠN MUA VÀO TỪ 5 TRIỆU ĐỒNG (BẮT BUỘC THANH TOÁN QUA NGÂN HÀNG - ${bankInvoices.length} HÓA ĐƠN)`;
     sec2.font = { name: 'Times New Roman', size: 11, bold: true, color: { argb: 'FFC00000' } };
     sec2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
     sec2.alignment = { vertical: 'middle', indent: 1 };
@@ -546,7 +546,7 @@ export async function exportInvoicesToExcel({
 
     sheet.mergeCells('A13:I13');
     const sec2Note = sheet.getCell('A13');
-    sec2Note.value = '⚠️ Căn cứ Luật Thuế GTGT: Hóa đơn từ 20.000.000đ trở lên bắt buộc phải có chứng từ thanh toán không dùng tiền mặt (Ủy nhiệm chi / Chuyển khoản) thì mới được khấu trừ thuế & tính chi phí hợp lý.';
+    sec2Note.value = '⚠️ Căn cứ Luật Thuế GTGT sửa đổi (hiệu lực từ 01/07/2025): Hóa đơn từ 5.000.000đ trở lên bắt buộc phải có chứng từ thanh toán không dùng tiền mặt (Ủy nhiệm chi / Chuyển khoản) thì mới được khấu trừ thuế & tính chi phí hợp lý.';
     sec2Note.font = { name: 'Times New Roman', size: 9.5, italic: true, color: { argb: 'FFC00000' } };
     sheet.getRow(13).height = 18;
 
@@ -580,7 +580,7 @@ export async function exportInvoicesToExcel({
     if (bankInvoices.length === 0) {
       sheet.mergeCells(`A${bankRowIdx}:J${bankRowIdx}`);
       const emptyBankCell = sheet.getRow(bankRowIdx).getCell(1);
-      emptyBankCell.value = 'Không có hóa đơn mua vào nào từ 20.000.000đ trở lên trong kỳ này.';
+      emptyBankCell.value = 'Không có hóa đơn mua vào nào từ 5.000.000đ trở lên trong kỳ này.';
       emptyBankCell.font = { name: 'Times New Roman', size: 10, italic: true };
       emptyBankCell.alignment = { horizontal: 'center', vertical: 'middle' };
       emptyBankCell.border = THIN_BORDER;
@@ -671,10 +671,10 @@ export async function exportInvoicesToExcel({
 
     bankRowIdx += 2;
 
-    // PHẦN III: THỐNG KÊ HÓA ĐƠN DƯỚI 20 TRIỆU ĐỒNG (TIỀN MẶT / CHUYỂN KHOẢN)
+    // PHẦN III: THỐNG KÊ HÓA ĐƠN DƯỚI 5 TRIỆU ĐỒNG (TIỀN MẶT / CHUYỂN KHOẢN)
     sheet.mergeCells(`A${bankRowIdx}:I${bankRowIdx}`);
     const sec3 = sheet.getCell(`A${bankRowIdx}`);
-    sec3.value = `III. THỐNG KÊ HÓA ĐƠN MUA VÀO DƯỚI 20 TRIỆU ĐỒNG (ĐƯỢC PHÉP DÙNG TIỀN MẶT - ${cashInvoices.length} HÓA ĐƠN)`;
+    sec3.value = `III. THỐNG KÊ HÓA ĐƠN MUA VÀO DƯỚI 5 TRIỆU ĐỒNG (ĐƯỢC PHÉP DÙNG TIỀN MẶT - ${cashInvoices.length} HÓA ĐƠN)`;
     sec3.font = { name: 'Times New Roman', size: 11, bold: true, color: { argb: 'FF1F4E79' } };
     sec3.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } };
     sec3.alignment = { vertical: 'middle', indent: 1 };
@@ -688,7 +688,7 @@ export async function exportInvoicesToExcel({
     const cashSummaryRow = sheet.getRow(bankRowIdx);
     cashSummaryRow.height = 24;
     sheet.mergeCells(`A${bankRowIdx}:F${bankRowIdx}`);
-    cashSummaryRow.getCell(1).value = `Tổng cộng ${cashInvoices.length} hóa đơn mua vào dưới 20 triệu đồng:`;
+    cashSummaryRow.getCell(1).value = `Tổng cộng ${cashInvoices.length} hóa đơn mua vào dưới 5 triệu đồng:`;
     cashSummaryRow.getCell(1).font = { name: 'Times New Roman', size: 10, bold: true };
     cashSummaryRow.getCell(1).alignment = { horizontal: 'right', vertical: 'middle' };
 

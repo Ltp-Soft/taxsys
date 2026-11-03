@@ -67,14 +67,14 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
     const netTax = totalSoldTax - totalPurchaseTax;
     const isPayable = netTax > 0;
 
-    // Hóa đơn >= 20 triệu sắp xếp giảm dần theo tổng thanh toán
+    // Hóa đơn >= 5 triệu sắp xếp giảm dần theo tổng thanh toán (Theo Luật Thuế GTGT mới từ 01/07/2025)
     const bankInvoices = validPurchase
-      .filter(i => (Number(i?.tong_tien_thanh_toan) || 0) >= 20000000)
+      .filter(i => (Number(i?.tong_tien_thanh_toan) || 0) >= 5000000)
       .sort((a, b) => (Number(b?.tong_tien_thanh_toan) || 0) - (Number(a?.tong_tien_thanh_toan) || 0));
 
-    // Hóa đơn < 20 triệu
+    // Hóa đơn < 5 triệu
     const cashInvoices = validPurchase
-      .filter(i => (Number(i?.tong_tien_thanh_toan) || 0) < 20000000);
+      .filter(i => (Number(i?.tong_tien_thanh_toan) || 0) < 5000000);
 
     const bankSumChuaThue = bankInvoices.reduce((s, i) => s + (Number(i?.tong_tien_chua_thue) || 0), 0);
     const bankSumThue = bankInvoices.reduce((s, i) => s + (Number(i?.tong_tien_thue) || 0), 0);
@@ -110,10 +110,10 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
       if (statusFilter === 'valid' && !item.is_valid_for_tax) return false;
       if (statusFilter === 'invalid' && item.is_valid_for_tax) return false;
 
-      // Lọc theo hạn mức thanh toán ngân hàng (≥ 20 triệu)
+      // Lọc theo hạn mức thanh toán ngân hàng (≥ 5 triệu)
       const totalAmount = Number(item?.tong_tien_thanh_toan) || 0;
-      if (amountFilter === 'gte20' && totalAmount < 20000000) return false;
-      if (amountFilter === 'lt20' && totalAmount >= 20000000) return false;
+      if (amountFilter === 'gte5' && totalAmount < 5000000) return false;
+      if (amountFilter === 'lt5' && totalAmount >= 5000000) return false;
 
       // Lọc theo nguồn luồng (HĐ Điện tử thường vs HĐ Máy tính tiền POS)
       const isPos = String(item?.loai_hoa_don || '').toLowerCase().includes('máy tính tiền') || 
@@ -313,7 +313,7 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                 }`}
               >
                 <Landmark className="w-3.5 h-3.5" />
-                <span>Sheet 3: Nghĩa Vụ Thuế & Đối Soát NH ({taxSummary.bankInvoices.length} HĐ ≥20tr)</span>
+                <span>Sheet 3: Nghĩa Vụ Thuế & Đối Soát NH ({taxSummary.bankInvoices.length} HĐ ≥5tr)</span>
               </button>
             </div>
 
@@ -341,15 +341,15 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                   <option value="invalid">✗ HĐ Đã Hủy / Thay Thế</option>
                 </select>
 
-                {/* Bộ lọc hạn mức thanh toán ngân hàng (≥ 20 triệu) */}
+                {/* Bộ lọc hạn mức thanh toán ngân hàng (≥ 5 triệu) */}
                 <select
                   value={amountFilter}
                   onChange={(e) => setAmountFilter(e.target.value)}
                   className="text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
                 >
                   <option value="all">Tất cả giá trị</option>
-                  <option value="gte20">🏦 HĐ ≥ 20 Triệu (Bắt buộc CK ngân hàng)</option>
-                  <option value="lt20">💵 HĐ &lt; 20 Triệu (Tiền mặt / CK)</option>
+                  <option value="gte5">🏦 HĐ ≥ 5 Triệu (Bắt buộc CK ngân hàng)</option>
+                  <option value="lt5">💵 HĐ &lt; 5 Triệu (Tiền mặt / CK)</option>
                 </select>
 
                 {/* Bộ lọc nguồn xuất (Điện tử vs Máy tính tiền) */}
@@ -471,13 +471,13 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                 </table>
               </div>
 
-              {/* PHẦN II: DANH SÁCH HÓA ĐƠN MUA VÀO TỪ 20 TRIỆU ĐỒNG (BẮT BUỘC CHUYỂN KHOẢN NGÂN HÀNG) */}
+              {/* PHẦN II: DANH SÁCH HÓA ĐƠN MUA VÀO TỪ 5 TRIỆU ĐỒNG (BẮT BUỘC CHUYỂN KHOẢN NGÂN HÀNG) */}
               <div className="border border-amber-200 rounded-xl overflow-hidden bg-white shadow-xs">
                 <div className="bg-amber-700 text-white px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                   <div className="flex items-center gap-2">
                     <Landmark className="w-4 h-4 text-amber-200" />
                     <h3 className="text-xs font-bold uppercase tracking-wider">
-                      II. Danh Sách Hóa Đơn Mua Vào Từ 20 Triệu Đồng (Bắt Buộc Chuyển Khoản Ngân Hàng - {taxSummary.bankInvoices.length} Hóa Đơn)
+                      II. Danh Sách Hóa Đơn Mua Vào Từ 5 Triệu Đồng (Bắt Buộc Chuyển Khoản Ngân Hàng - {taxSummary.bankInvoices.length} Hóa Đơn)
                     </h3>
                   </div>
                   <span className="text-[11px] text-amber-100 font-semibold">
@@ -486,7 +486,7 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                 </div>
 
                 <div className="bg-amber-50/70 border-b border-amber-200 px-4 py-2 text-[11px] text-amber-800">
-                  ⚠️ <strong>Căn cứ Luật Thuế GTGT:</strong> Hóa đơn có giá trị thanh toán từ 20.000.000đ trở lên bắt buộc phải có chứng từ thanh toán không dùng tiền mặt (Ủy nhiệm chi / Sao kê ngân hàng) thì doanh nghiệp mới được khấu trừ thuế GTGT và hạch toán chi phí hợp lý.
+                  ⚠️ <strong>Căn cứ Luật Thuế GTGT sửa đổi (áp dụng từ 01/07/2025):</strong> Mọi hóa đơn mua hàng hóa, dịch vụ từ <strong>5.000.000đ trở lên</strong> (đã gồm VAT) bắt buộc phải có chứng từ thanh toán không dùng tiền mặt (Ủy nhiệm chi / Sao kê ngân hàng) thì doanh nghiệp mới được khấu trừ thuế GTGT và hạch toán chi phí hợp lý.
                 </div>
 
                 <div className="overflow-x-auto">
@@ -508,7 +508,7 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                       {taxSummary.bankInvoices.length === 0 ? (
                         <tr>
                           <td colSpan="9" className="text-center py-6 text-slate-500 font-sans italic">
-                            Không có hóa đơn mua vào nào từ 20.000.000đ trở lên trong kỳ này.
+                            Không có hóa đơn mua vào nào từ 5.000.000đ trở lên trong kỳ này.
                           </td>
                         </tr>
                       ) : (
@@ -542,7 +542,7 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                       {taxSummary.bankInvoices.length > 0 && (
                         <tr className="bg-amber-100/70 font-bold border-t-2 border-amber-300">
                           <td colSpan="5" className="p-2.5 text-right font-sans text-amber-950 font-bold">
-                            TỔNG CỘNG HÓA ĐƠN BẮT BUỘC CHUYỂN KHOẢN (CÔNG THỨC =SUM):
+                            TỔNG CỘNG HÓA ĐƠN BẮT BUỘC CHUYỂN KHOẢN (≥ 5 TRIỆU - CÔNG THỨC =SUM):
                           </td>
                           <td className="p-2.5 text-right font-bold text-slate-900">
                             {taxSummary.bankSumChuaThue.toLocaleString('vi-VN')} đ
@@ -561,13 +561,13 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                 </div>
               </div>
 
-              {/* PHẦN III: THỐNG KÊ HÓA ĐƠN DƯỚI 20 TRIỆU ĐỒNG */}
+              {/* PHẦN III: THỐNG KÊ HÓA ĐƠN DƯỚI 5 TRIỆU ĐỒNG */}
               <div className="border border-emerald-200 rounded-xl overflow-hidden bg-white shadow-xs">
                 <div className="bg-emerald-700 text-white px-4 py-2.5 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <CheckCircle className="w-4 h-4 text-emerald-200" />
                     <h3 className="text-xs font-bold uppercase tracking-wider">
-                      III. Thống Kê Hóa Đơn Mua Vào Dưới 20 Triệu Đồng (Được Phép Thanh Toán Tiền Mặt - {taxSummary.cashInvoices.length} Hóa Đơn)
+                      III. Thống Kê Hóa Đơn Mua Vào Dưới 5 Triệu Đồng (Được Phép Thanh Toán Tiền Mặt - {taxSummary.cashInvoices.length} Hóa Đơn)
                     </h3>
                   </div>
                   <span className="text-[11px] text-emerald-100">Hợp lệ chi phí & khấu trừ thuế</span>
@@ -658,7 +658,12 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                             {Number(item.tong_tien_thue || 0).toLocaleString('vi-VN')} đ
                           </td>
                           <td className="p-2.5 text-right font-bold text-slate-900">
-                            {Number(item.tong_tien_thanh_toan || 0).toLocaleString('vi-VN')} đ
+                            <div>{Number(item.tong_tien_thanh_toan || 0).toLocaleString('vi-VN')} đ</div>
+                            {activeTab === 'purchase' && isValid && Number(item.tong_tien_thanh_toan || 0) >= 5000000 && (
+                              <span className="inline-block mt-0.5 text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.2 rounded">
+                                🏦 ≥ 5tr: Cần CK
+                              </span>
+                            )}
                           </td>
                           <td className="p-2.5 text-center">
                             {isValid ? (
