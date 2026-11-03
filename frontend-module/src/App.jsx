@@ -14,6 +14,39 @@ import {
 
 export const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/ltp-taxsync-t%E1%BA%A3i-t%E1%BB%95ng-h%E1%BB%A3p/iapkfljbplgogeifmpfkgagnfkcgnmed?authuser=0&hl=en&pli=1';
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('[TaxSync ErrorBoundary]:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-6 bg-red-50 border border-red-200 rounded-2xl m-6 text-center max-w-xl mx-auto">
+          <h2 className="text-base font-bold text-red-800 mb-2">Đã xảy ra sự cố hiển thị</h2>
+          <p className="text-xs text-red-600 mb-4">{this.state.error?.message || 'Lỗi render dữ liệu'}</p>
+          <button
+            onClick={() => { this.setState({ hasError: false }); window.location.reload(); }}
+            className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-xs transition"
+          >
+            Tải Lại Giao Diện
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const [activeAccount, setActiveAccount] = useState(null);
   const [invoiceData, setInvoiceData] = useState(null);
@@ -41,13 +74,23 @@ export default function App() {
     };
   }, []);
 
+  const handleSelectAccount = (acc) => {
+    setActiveAccount(acc);
+    // Nếu chuyển sang công ty khác thì dọn sạch dữ liệu xem trước của công ty trước
+    if (activeAccount && acc && activeAccount.mst !== acc.mst) {
+      setInvoiceData(null);
+      setSyncMeta(null);
+    }
+  };
+
   const handleSyncCompleted = (data, meta) => {
     setInvoiceData(data);
     setSyncMeta(meta);
   };
 
   return (
-    <div className="min-h-screen bg-slate-100/70 text-slate-800 font-sans flex flex-col">
+    <ErrorBoundary>
+      <div className="min-h-screen bg-slate-100/70 text-slate-800 font-sans flex flex-col">
       {/* Top Header / Navbar (Giữ nguyên nhận diện thương hiệu LTP Soft) */}
       <header className="sticky top-0 z-40 bg-slate-900 border-b border-slate-800 shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -166,7 +209,7 @@ export default function App() {
         {/* Khối quản lý MST Doanh Nghiệp */}
         <TaxAccountManager
           activeAccount={activeAccount}
-          onSelectAccount={setActiveAccount}
+          onSelectAccount={handleSelectAccount}
         />
 
         {/* Khối điều khiển kỳ tra cứu & đồng bộ */}
@@ -199,5 +242,6 @@ export default function App() {
         </div>
       </footer>
     </div>
-  );
+  </ErrorBoundary>
+);
 }

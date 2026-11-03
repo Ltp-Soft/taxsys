@@ -53,34 +53,34 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
 
   // Dữ liệu phục vụ Sheet 3 (Tổng hợp nghĩa vụ thuế GTGT & Đối soát Ngân hàng)
   const taxSummary = useMemo(() => {
-    const validPurchase = purchaseList.filter(i => i.is_valid_for_tax !== false && i.trang_thai_hoa_don !== '4' && i.trang_thai_hoa_don !== '6');
-    const validSold = soldList.filter(i => i.is_valid_for_tax !== false && i.trang_thai_hoa_don !== '4' && i.trang_thai_hoa_don !== '6');
+    const validPurchase = (purchaseList || []).filter(i => i && i.is_valid_for_tax !== false && i.trang_thai_hoa_don !== '4' && i.trang_thai_hoa_don !== '6');
+    const validSold = (soldList || []).filter(i => i && i.is_valid_for_tax !== false && i.trang_thai_hoa_don !== '4' && i.trang_thai_hoa_don !== '6');
 
-    const totalSoldBeforeTax = validSold.reduce((s, i) => s + (Number(i.tong_tien_chua_thue) || 0), 0);
-    const totalSoldTax = validSold.reduce((s, i) => s + (Number(i.tong_tien_thue) || 0), 0);
+    const totalSoldBeforeTax = validSold.reduce((s, i) => s + (Number(i?.tong_tien_chua_thue) || 0), 0);
+    const totalSoldTax = validSold.reduce((s, i) => s + (Number(i?.tong_tien_thue) || 0), 0);
 
-    const totalPurchaseBeforeTax = validPurchase.reduce((s, i) => s + (Number(i.tong_tien_chua_thue) || 0), 0);
-    const totalPurchaseTax = validPurchase.reduce((s, i) => s + (Number(i.tong_tien_thue) || 0), 0);
+    const totalPurchaseBeforeTax = validPurchase.reduce((s, i) => s + (Number(i?.tong_tien_chua_thue) || 0), 0);
+    const totalPurchaseTax = validPurchase.reduce((s, i) => s + (Number(i?.tong_tien_thue) || 0), 0);
 
     const netTax = totalSoldTax - totalPurchaseTax;
     const isPayable = netTax > 0;
 
     // Hóa đơn >= 20 triệu sắp xếp giảm dần theo tổng thanh toán
     const bankInvoices = validPurchase
-      .filter(i => (Number(i.tong_tien_thanh_toan) || 0) >= 20000000)
-      .sort((a, b) => (Number(b.tong_tien_thanh_toan) || 0) - (Number(a.tong_tien_thanh_toan) || 0));
+      .filter(i => (Number(i?.tong_tien_thanh_toan) || 0) >= 20000000)
+      .sort((a, b) => (Number(b?.tong_tien_thanh_toan) || 0) - (Number(a?.tong_tien_thanh_toan) || 0));
 
     // Hóa đơn < 20 triệu
     const cashInvoices = validPurchase
-      .filter(i => (Number(i.tong_tien_thanh_toan) || 0) < 20000000);
+      .filter(i => (Number(i?.tong_tien_thanh_toan) || 0) < 20000000);
 
-    const bankSumChuaThue = bankInvoices.reduce((s, i) => s + (Number(i.tong_tien_chua_thue) || 0), 0);
-    const bankSumThue = bankInvoices.reduce((s, i) => s + (Number(i.tong_tien_thue) || 0), 0);
-    const bankSumThanhToan = bankInvoices.reduce((s, i) => s + (Number(i.tong_tien_thanh_toan) || 0), 0);
+    const bankSumChuaThue = bankInvoices.reduce((s, i) => s + (Number(i?.tong_tien_chua_thue) || 0), 0);
+    const bankSumThue = bankInvoices.reduce((s, i) => s + (Number(i?.tong_tien_thue) || 0), 0);
+    const bankSumThanhToan = bankInvoices.reduce((s, i) => s + (Number(i?.tong_tien_thanh_toan) || 0), 0);
 
-    const cashSumChuaThue = cashInvoices.reduce((s, i) => s + (Number(i.tong_tien_chua_thue) || 0), 0);
-    const cashSumThue = cashInvoices.reduce((s, i) => s + (Number(i.tong_tien_thue) || 0), 0);
-    const cashSumThanhToan = cashInvoices.reduce((s, i) => s + (Number(i.tong_tien_thanh_toan) || 0), 0);
+    const cashSumChuaThue = cashInvoices.reduce((s, i) => s + (Number(i?.tong_tien_chua_thue) || 0), 0);
+    const cashSumThue = cashInvoices.reduce((s, i) => s + (Number(i?.tong_tien_thue) || 0), 0);
+    const cashSumThanhToan = cashInvoices.reduce((s, i) => s + (Number(i?.tong_tien_thanh_toan) || 0), 0);
 
     return {
       totalSoldBeforeTax,
@@ -110,9 +110,9 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
 
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
-        const partnerName = (activeTab === 'purchase' ? item.ten_nguoi_ban : item.ten_nguoi_mua) || '';
-        const partnerMst = (activeTab === 'purchase' ? item.mst_nguoi_ban : item.mst_nguoi_mua) || '';
-        const invoiceNum = String(item.so_hoa_don || '');
+        const partnerName = String((activeTab === 'purchase' ? item?.ten_nguoi_ban : item?.ten_nguoi_mua) || '');
+        const partnerMst = String((activeTab === 'purchase' ? item?.mst_nguoi_ban : item?.mst_nguoi_mua) || '');
+        const invoiceNum = String(item?.so_hoa_don || '');
 
         return partnerName.toLowerCase().includes(term) ||
                partnerMst.includes(term) ||

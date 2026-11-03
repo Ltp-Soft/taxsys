@@ -3,7 +3,7 @@ const { GoogleGenAI } = require('@google/genai');
 class GeminiService {
   constructor() {
     this.apiKey = process.env.GEMINI_API_KEY || '';
-    this.modelName = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
+    this.modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
     if (this.apiKey) {
       this.ai = new GoogleGenAI({ apiKey: this.apiKey });
     } else {
@@ -31,39 +31,58 @@ class GeminiService {
     }
 
     try {
-      let mimeType = 'image/png';
-      let cleanBase64 = imageData;
+      const isSvg = typeof imageData === 'string' && (imageData.includes('<svg') || imageData.includes('<SVG'));
+      let contents;
 
-      // Handle data URL prefix
-      if (typeof imageData === 'string' && imageData.startsWith('data:')) {
-        const matches = imageData.match(/^data:([^;]+);base64,(.+)$/);
-        if (matches) {
-          mimeType = matches[1];
-          cleanBase64 = matches[2];
+      if (isSvg) {
+        contents = [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: `You are an expert OCR system for Vietnamese tax authority CAPTCHAs (hoadondientu.gdt.gov.vn).
+Here is the CAPTCHA SVG markup:
+\`\`\`xml
+${imageData}
+\`\`\`
+Extract the exact 5 to 6 alphanumeric characters displayed in the CAPTCHA. Ignore strike-through curves, noise lines, and background interference.
+Return ONLY valid JSON in format: {"code": "XXXXX"}`
+              }
+            ]
+          }
+        ];
+      } else {
+        let mimeType = 'image/png';
+        let cleanBase64 = imageData;
+
+        // Handle data URL prefix
+        if (typeof imageData === 'string' && imageData.startsWith('data:')) {
+          const matches = imageData.match(/^data:([^;]+);base64,(.+)$/);
+          if (matches) {
+            mimeType = matches[1];
+            cleanBase64 = matches[2];
+          }
         }
-      } else if (typeof imageData === 'string' && imageData.trim().startsWith('<svg')) {
-        mimeType = 'image/svg+xml';
-        cleanBase64 = Buffer.from(imageData).toString('base64');
+
+        const promptText = 'Read the exact alphanumeric characters in this CAPTCHA image. Ignore horizontal strike-through lines and background noise. Return ONLY valid JSON format: {"code": "XXXXX"}.';
+
+        contents = [
+          {
+            role: 'user',
+            parts: [
+              { text: promptText },
+              {
+                inlineData: {
+                  mimeType: mimeType,
+                  data: cleanBase64
+                }
+              }
+            ]
+          }
+        ];
       }
 
-      const promptText = 'Read the exact alphanumeric characters in this CAPTCHA image. Ignore horizontal strike-through lines and background noise. Return ONLY the raw string in JSON format: {"code": "XXXXX"}.';
-
-      const contents = [
-        {
-          role: 'user',
-          parts: [
-            { text: promptText },
-            {
-              inlineData: {
-                mimeType: mimeType,
-                data: cleanBase64
-              }
-            }
-          ]
-        }
-      ];
-
-      const candidateModels = [this.modelName, 'gemini-3.8-flash', 'gemini-3.5-flash'];
+      const candidateModels = [this.modelName, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
       let response = null;
       let lastErr = null;
 
@@ -158,7 +177,7 @@ Return ONLY a valid JSON object with:
 }`;
 
     const response = await ai.models.generateContent({
-      model: this.modelName || 'gemini-3.5-flash-lite',
+      model: this.modelName || 'gemini-2.5-flash',
       contents: [{ role: 'user', parts: [{ text: systemPrompt }] }],
       config: {
         temperature: 0.1,
