@@ -16,7 +16,7 @@ function generateUUID() {
 export class ApiRunner {
   constructor(baseUrl, backendUrl, licenseKey = '') {
     this.baseUrl = baseUrl ? baseUrl.replace(/\/+$/, '') : 'https://hoadondientu.gdt.gov.vn/api';
-    this.backendUrl = backendUrl ? backendUrl.replace(/\/+$/, '') : 'http://localhost:3001';
+    this.backendUrl = backendUrl ? backendUrl.replace(/\/+$/, '') : 'https://tax.ltp-soft.com';
     this.licenseKey = licenseKey;
     this.jwt = null;
   }

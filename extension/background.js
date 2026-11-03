@@ -637,7 +637,7 @@ async function handleSyncRequest(payload) {
     to_date,
     strict_period = true,
     include_pos = true,
-    backend_url = 'http://localhost:3001',
+    backend_url = 'https://tax.ltp-soft.com',
     license_key = '',
     manual_captcha = null,
     manual_ckey = null
