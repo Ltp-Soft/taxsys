@@ -238,6 +238,10 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
       ? window.location.origin
       : backendUrl;
 
+    const savedLicenseKey = (typeof window !== 'undefined' && window.localStorage)
+      ? (window.localStorage.getItem('ltp_tax_license_key') || 'free-lead-magnet')
+      : 'free-lead-magnet';
+
     const payload = {
       username: activeAccount.mst,
       password: activeAccount.password,
@@ -249,7 +253,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
       strict_period: strictPeriod,
       include_pos: includePos,
       backend_url: effectiveBackend,
-      license_key: 'free-lead-magnet',
+      license_key: savedLicenseKey,
       manual_captcha: manualCodeVal,
       manual_ckey: manualCkeyVal
     };
@@ -259,6 +263,78 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
       requestId: Date.now().toString(),
       payload: payload
     }, '*');
+  };
+
+  // Tạo đơn hàng VietQR tự động cho bản quyền PRO
+  const handleCreatePaymentOrder = async (e) => {
+    e.preventDefault();
+    if (!checkoutEmail.trim() || !checkoutEmail.includes('@')) {
+      alert('Vui lòng nhập địa chỉ Email hợp lệ để nhận mã bản quyền.');
+      return;
+    }
+    setCheckoutLoading(true);
+    try {
+      const res = await fetch('https://ltp-soft.com/api/tax/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: checkoutEmail.trim(),
+          phone: checkoutPhone.trim(),
+          plan_type: checkoutPlan
+        })
+      });
+      const data = await res.json();
+      if (data && data.success && data.order) {
+        setCheckoutOrder(data.order);
+      } else {
+        alert(data?.error || 'Không thể khởi tạo đơn hàng. Vui lòng thử lại.');
+      }
+    } catch (err) {
+      alert('Lỗi kết nối máy chủ thanh toán: ' + err.message);
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
+
+  // Tự động kiểm tra trạng thái thanh toán SePay mỗi 3 giây khi đang hiển thị QR
+  useEffect(() => {
+    if (!checkoutOrder || checkoutSuccess) return;
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch(`https://ltp-soft.com/api/tax/check-payment?order_id=${encodeURIComponent(checkoutOrder.id)}`);
+        const data = await res.json();
+        if (data && data.paid && data.license_key) {
+          localStorage.setItem('ltp_tax_license_key', data.license_key);
+          setCheckoutSuccess(true);
+          clearInterval(timer);
+        }
+      } catch (e) {}
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [checkoutOrder, checkoutSuccess]);
+
+  // Kích hoạt bằng mã License Key có sẵn
+  const handleActivateManualKey = async (e) => {
+    e.preventDefault();
+    const key = manualLicenseInput.trim().toUpperCase();
+    if (!key) return;
+    setManualLicenseMsg(null);
+    try {
+      const res = await fetch('https://ltp-soft.com/api/tax/verify-license', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ license_key: key })
+      });
+      const data = await res.json();
+      if (data && data.valid) {
+        localStorage.setItem('ltp_tax_license_key', key);
+        setManualLicenseMsg({ type: 'SUCCESS', text: `✓ Kích hoạt thành công (${data.message || 'Bản quyền PRO'})! Bạn có thể đóng bảng này và tra cứu ngay.` });
+      } else {
+        setManualLicenseMsg({ type: 'ERROR', text: data?.error || 'Mã bản quyền không hợp lệ hoặc chưa được kích hoạt.' });
+      }
+    } catch (err) {
+      setManualLicenseMsg({ type: 'ERROR', text: 'Không thể kiểm tra mã bản quyền: ' + err.message });
+    }
   };
 
   const submitManualCaptcha = (e) => {
@@ -853,26 +929,29 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
                 ) : (
                   /* Form chọn gói & điền thông tin */
                   <form onSubmit={handleCreatePaymentOrder} className="space-y-3.5">
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-2 gap-2.5">
                       <div
                         onClick={() => setCheckoutPlan('PRO_ANNUAL')}
-                        className={`p-3 rounded-xl border cursor-pointer transition text-left ${checkoutPlan === 'PRO_ANNUAL' ? 'border-blue-600 bg-blue-50/60 shadow-xs ring-1 ring-blue-500' : 'border-slate-200 hover:border-slate-300'}`}
+                        className={`p-3.5 rounded-xl border cursor-pointer transition text-left relative ${checkoutPlan === 'PRO_ANNUAL' ? 'border-blue-600 bg-blue-50/70 shadow-xs ring-2 ring-blue-500' : 'border-slate-200 hover:border-slate-300'}`}
                       >
-                        <span className="block text-[11px] font-bold text-blue-700 uppercase">Gói 1 Năm</span>
-                        <strong className="text-sm font-black text-slate-900">399.000 đ</strong>
-                        <p className="text-[10px] text-slate-500 mt-0.5">Không giới hạn MST</p>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[11px] font-bold text-blue-700 uppercase">Gói 1 Năm</span>
+                          <span className="bg-emerald-100 text-emerald-800 text-[9px] font-extrabold px-1.5 py-0.5 rounded">Khuyên dùng</span>
+                        </div>
+                        <strong className="text-base font-black text-slate-900">399.000 đ</strong>
+                        <p className="text-[10px] text-slate-600 mt-0.5">Chỉ ~33k/tháng • Không giới hạn MST</p>
                       </div>
 
                       <div
                         onClick={() => setCheckoutPlan('PRO_LIFETIME')}
-                        className={`p-3 rounded-xl border cursor-pointer transition text-left ${checkoutPlan === 'PRO_LIFETIME' ? 'border-blue-600 bg-blue-50/60 shadow-xs ring-1 ring-blue-500' : 'border-slate-200 hover:border-slate-300'}`}
+                        className={`p-3.5 rounded-xl border cursor-pointer transition text-left ${checkoutPlan === 'PRO_LIFETIME' ? 'border-blue-600 bg-blue-50/70 shadow-xs ring-2 ring-blue-500' : 'border-slate-200 hover:border-slate-300'}`}
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-bold text-amber-700 uppercase">Trọn Đời</span>
-                          <span className="bg-amber-100 text-amber-800 text-[9px] font-bold px-1.5 py-0.2 rounded">Tiết kiệm</span>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[11px] font-bold text-amber-700 uppercase">Vĩnh Viễn (3 Năm+)</span>
+                          <span className="bg-amber-100 text-amber-800 text-[9px] font-bold px-1.5 py-0.5 rounded">VIP</span>
                         </div>
-                        <strong className="text-sm font-black text-slate-900">599.000 đ</strong>
-                        <p className="text-[10px] text-slate-500 mt-0.5">Dùng vĩnh viễn</p>
+                        <strong className="text-base font-black text-slate-900">1.190.000 đ</strong>
+                        <p className="text-[10px] text-slate-600 mt-0.5">Thanh toán 1 lần dùng trọn đời</p>
                       </div>
                     </div>
 

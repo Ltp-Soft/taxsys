@@ -652,6 +652,10 @@ async function handleSyncRequest(payload) {
     const registeredMsts = storeData.registered_msts || [];
     const activeLicense = (license_key && license_key !== 'free-lead-magnet') ? license_key : storeData.license_key;
 
+    if (license_key && license_key !== 'free-lead-magnet' && license_key !== storeData.license_key) {
+      await chrome.storage.local.set({ license_key: license_key });
+    }
+
     if (!registeredMsts.includes(username)) {
       if (registeredMsts.length >= 2 && !activeLicense) {
         throw new Error('LIMIT_EXCEEDED: Bạn đang sử dụng gói Miễn phí (đã dùng tối đa 02 Mã số thuế: ' + registeredMsts.join(', ') + '). Để tra cứu từ MST thứ 3 trở lên (' + username + '), vui lòng nâng cấp bản Pro hoặc đăng ký sử dụng phần mềm chấm công LTP Attendance!');
