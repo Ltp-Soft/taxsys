@@ -184,9 +184,8 @@ export default function App() {
                 href={CHROME_STORE_URL}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black text-xs sm:text-sm rounded-xl shadow-lg hover:shadow-emerald-500/25 transition transform active:scale-95 text-center"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black text-xs sm:text-sm rounded-xl shadow-lg hover:shadow-emerald-500/25 transition transform active:scale-95 text-center"
               >
-                <Download className="w-4 h-4 text-white" />
                 <span>Cài Đặt Tại Cửa Hàng Google Chrome</span>
                 <ExternalLink className="w-3.5 h-3.5 text-emerald-100" />
               </a>
