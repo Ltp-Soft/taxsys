@@ -2,6 +2,45 @@ const { GoogleGenAI } = require('@google/genai');
 
 const FALLBACK_GEMINI_KEY = Buffer.from('QVEuQWI4Uk42TE5sd3ZMeEItaFk3X0NHaTQxVEZQdzBaQ0tDOEhIaXdJM1g0VE1rZ0xKZ2c=', 'base64').toString('utf-8');
 
+function normalizeAndSortSvgCaptcha(svgString) {
+  try {
+    const pathRegex = /<path\b[^>]*>/gi;
+    const matches = svgString.match(pathRegex) || [];
+    const charPaths = [];
+
+    for (const tag of matches) {
+      if (tag.includes('fill="none"') || (tag.includes('stroke=') && !tag.includes('fill='))) {
+        continue;
+      }
+      const dMatch = tag.match(/\bd="([^"]+)"/i);
+      if (!dMatch) continue;
+      const d = dMatch[1];
+      const coordRegex = /[MLQ](\d+\.?\d*)\s+(\d+\.?\d*)/gi;
+      let cm;
+      const xs = [];
+      while ((cm = coordRegex.exec(d)) !== null) {
+        xs.push(parseFloat(cm[1]));
+      }
+      if (xs.length > 5) {
+        const minX = Math.min(...xs);
+        charPaths.push({ minX, tag });
+      }
+    }
+
+    if (charPaths.length >= 4) {
+      charPaths.sort((a, b) => a.minX - b.minX);
+      return {
+        sortedSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="40" viewBox="0,0,200,40">' +
+                   charPaths.map(c => c.tag).join('') + '</svg>',
+        count: charPaths.length
+      };
+    }
+  } catch (e) {
+    console.warn('SVG sorting error, fallback to raw:', e);
+  }
+  return { sortedSvg: svgString, count: 0 };
+}
+
 class GeminiService {
   constructor() {
     try { require('dotenv').config(); } catch (e) {}
@@ -39,17 +78,20 @@ class GeminiService {
       let contents;
 
       if (isSvg) {
+        const { sortedSvg, count } = normalizeAndSortSvgCaptcha(imageData);
         contents = [
           {
             role: 'user',
             parts: [
               {
                 text: `You are an expert OCR system for Vietnamese tax authority CAPTCHAs (hoadondientu.gdt.gov.vn).
+The character paths in this SVG markup have been sorted in STRICT LEFT-TO-RIGHT READING ORDER.
 Here is the CAPTCHA SVG markup:
 \`\`\`xml
-${imageData}
+${sortedSvg}
 \`\`\`
-Extract the exact 5 to 6 alphanumeric characters displayed in the CAPTCHA. Ignore strike-through curves, noise lines, and background interference.
+Each path represents exactly one character from left to right.
+Extract the exact ${count > 0 ? count : '5 to 6'} alphanumeric characters displayed (uppercase letters and digits).
 Return ONLY valid JSON in format: {"code": "XXXXX"}`
               }
             ]
