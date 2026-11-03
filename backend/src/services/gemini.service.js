@@ -86,7 +86,7 @@ Return ONLY valid JSON in format: {"code": "XXXXX"}`
         ];
       }
 
-      const candidateModels = [this.modelName, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+      const candidateModels = [this.modelName || 'gemini-2.5-flash', 'gemini-2.5-flash'];
       let response = null;
       let lastErr = null;
 
@@ -97,7 +97,10 @@ Return ONLY valid JSON in format: {"code": "XXXXX"}`
             contents: contents,
             config: {
               temperature: 0.1,
-              responseMimeType: 'application/json'
+              responseMimeType: 'application/json',
+              thinkingConfig: {
+                thinkingBudget: 0
+              }
             }
           });
           if (response && response.text) break;

@@ -84,22 +84,36 @@ export class ApiRunner {
       ...(options.headers || {})
     };
 
-    const response = await fetch(url, {
-      ...options,
-      headers
-    });
+    const controller = new AbortController();
+    const timeoutMs = options.timeoutMs || 8000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errJson = null;
-      try {
-        errJson = JSON.parse(errorText);
-      } catch (e) {}
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers,
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
 
-      throw new Error(errJson?.message || `Backend Error [${response.status}]: ${errorText}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errJson = null;
+        try {
+          errJson = JSON.parse(errorText);
+        } catch (e) {}
+
+        throw new Error(errJson?.message || `Backend Error [${response.status}]: ${errorText}`);
+      }
+
+      return await response.json();
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        throw new Error('Hết thời gian chờ máy chủ AI giải Captcha (> 8s). Chuyển sang chế độ nhập mã tay.');
+      }
+      throw err;
     }
-
-    return await response.json();
   }
 
   /**

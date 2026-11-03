@@ -89,7 +89,7 @@ Return ONLY valid JSON in format: {"code": "XXXXX"}`
       ];
     }
 
-    const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const candidateModels = ['gemini-2.5-flash'];
     let solvedCode = null;
     let lastError = null;
 
@@ -103,7 +103,10 @@ Return ONLY valid JSON in format: {"code": "XXXXX"}`
             contents: contents,
             generationConfig: {
               temperature: 0.1,
-              responseMimeType: 'application/json'
+              responseMimeType: 'application/json',
+              thinkingConfig: {
+                thinkingBudget: 0
+              }
             }
           })
         });

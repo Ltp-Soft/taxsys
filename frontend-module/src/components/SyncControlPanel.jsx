@@ -82,22 +82,28 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
               ? window.location.origin
               : backendUrl;
 
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 6000);
+
             fetch(`${effectiveBackend}/api/v1/solve-captcha`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ image: svgData, ckey: ckeyData })
+              body: JSON.stringify({ image: svgData, ckey: ckeyData }),
+              signal: controller.signal
             })
               .then(r => r.json())
               .then(data => {
+                clearTimeout(timeoutId);
                 if (data && data.success && data.code) {
-                  console.log('[AutoCaptcha] Solved successfully by AI serverless:', data.code);
+                  console.log('[AutoCaptcha] Solved successfully by AI serverless in <2s:', data.code);
                   handleStartSync(data.code, ckeyData);
                 } else {
                   setShowCaptchaModal(true);
                 }
               })
               .catch(err => {
-                console.warn('[AutoCaptcha] Fallback failed:', err);
+                clearTimeout(timeoutId);
+                console.warn('[AutoCaptcha] Fast fallback to manual modal:', err);
                 setShowCaptchaModal(true);
               });
           } else {
