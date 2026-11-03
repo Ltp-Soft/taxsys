@@ -373,16 +373,32 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
       } catch {}
       const mstList = savedAccounts.map(a => ({ mst: a.mst, name: a.companyName || '' }));
 
-      const res = await fetch('https://ltp-soft.com/api/tax/verify-license', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          license_key: keyInput,
-          client_id: clientId,
-          mst_list: mstList
-        })
-      });
-      const data = await res.json();
+      let res;
+      let data;
+      try {
+        res = await fetch('https://ltp-soft.com/api/tax/verify-license', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            license_key: keyInput,
+            client_id: clientId,
+            mst_list: mstList
+          })
+        });
+        data = await res.json();
+      } catch (networkErr) {
+        // Fallback gọi qua proxy cùng tên miền tax.ltp-soft.com nếu trình duyệt chặn cross-domain
+        res = await fetch('/api/v1/verify-license', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            license_key: keyInput,
+            client_id: clientId,
+            mst_list: mstList
+          })
+        });
+        data = await res.json();
+      }
       if (data && data.valid) {
         const finalKey = data.license_key || keyInput.toUpperCase();
         localStorage.setItem('ltp_tax_license_key', finalKey);
