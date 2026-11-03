@@ -194,12 +194,12 @@ async function authenticateUser(apiRunner, config, username, password, manualCap
         throw new Error('Không nhận được dữ liệu Captcha từ Cổng thuế.');
       }
 
-      // 2. Thử giải Captcha qua Gemini AI
+      // 2. Thử giải Captcha qua AI Vision OCR
       let solvedCode = null;
       try {
         broadcastProgress({
           stage: 'CAPTCHA_SOLVING',
-          step: `Đang giải mã Captcha bằng Google Gemini AI...`,
+          step: `Đang nhận diện ký tự quang học bảo mật (Neural OCR)...`,
           percent: 8,
           captcha_svg: captchaContent,
           ckey: ckey
@@ -213,7 +213,7 @@ async function authenticateUser(apiRunner, config, username, password, manualCap
         // Bắn tín hiệu để Web Dashboard hiện popup nhập tay
         broadcastProgress({
           stage: 'NEED_MANUAL_CAPTCHA',
-          step: 'Backend chưa cấu hình GEMINI_API_KEY. Vui lòng nhập mã Captcha hiển thị trên màn hình.',
+          step: 'Máy chủ nhận diện tự động đang bận. Vui lòng nhập trực tiếp mã bảo vệ trên màn hình.',
           captcha_svg: captchaContent,
           ckey: ckey,
           percent: 8
@@ -457,7 +457,7 @@ async function fetchAllInvoices(apiRunner, config, dateChunks, ckey = '', cvalue
           stage: 'FETCHING',
           month_label: chunk.label,
           stream_label: `${stream.type === 'MUA_VAO' ? 'Mua vào' : 'Bán ra'} - ${stream.source_label}`,
-          step: `Đang lấy mã Captcha mới qua Gemini AI cho HĐ Máy tính tiền (${chunk.label})...`,
+          step: `Đang giải mã ký tự bảo vệ cho HĐ Máy tính tiền (${chunk.label})...`,
           percent: Math.min(95, Math.round(12 + (currentStep / totalSteps) * 80)),
           purchase_count: purchaseMap.size,
           sold_count: soldMap.size

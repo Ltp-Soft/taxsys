@@ -754,6 +754,19 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
               </button>
             </div>
 
+            {/* Thông báo lý do nâng cấp */}
+            {upgradeErrorMsg && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5 mb-4 text-xs text-amber-950 leading-relaxed space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                  <span>ℹ️ Thông báo phân quyền gói sử dụng:</span>
+                </div>
+                <p>{upgradeErrorMsg}</p>
+                <p className="text-[11px] text-amber-800 italic pt-1 border-t border-amber-200/60 mt-1">
+                  💡 Chi phí gói PRO chỉ bằng 1 cốc trà sữa/tháng, tiết kiệm hàng chục giờ nhập liệu tay và bảo vệ bạn khỏi các lỗi loại trừ chi phí thuế!
+                </p>
+              </div>
+            )}
+
             {/* Tab chuyển đổi: Mua tự động / Kích hoạt mã có sẵn */}
             <div className="flex border border-slate-200 rounded-xl p-1 bg-slate-100 mb-4 text-xs font-bold">
               <button
