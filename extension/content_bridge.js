@@ -39,6 +39,19 @@ window.addEventListener('message', (event) => {
     });
   }
 
+  if (type === 'TAX_EXTENSION_UPDATE_MST') {
+    chrome.runtime.sendMessage({
+      type: 'UPDATE_MST',
+      payload: payload
+    }, (res) => {
+      window.postMessage({
+        type: 'TAX_EXTENSION_UPDATE_MST_RESULT',
+        requestId: requestId,
+        response: res
+      }, '*');
+    });
+  }
+
   if (type === 'TAX_EXTENSION_PING') {
     chrome.runtime.sendMessage({ type: 'PING' }, (res) => {
       window.postMessage({

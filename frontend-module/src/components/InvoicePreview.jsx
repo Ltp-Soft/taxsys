@@ -21,6 +21,8 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
   const [activeTab, setActiveTab] = useState('purchase'); // 'purchase' | 'sold'
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'valid' | 'invalid'
+  const [amountFilter, setAmountFilter] = useState('all'); // 'all' | 'gte20' | 'lt20'
+  const [streamFilter, setStreamFilter] = useState('all'); // 'all' | 'normal' | 'pos'
   const [isExporting, setIsExporting] = useState(false);
   const containerRef = useRef(null);
 
@@ -108,6 +110,18 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
       if (statusFilter === 'valid' && !item.is_valid_for_tax) return false;
       if (statusFilter === 'invalid' && item.is_valid_for_tax) return false;
 
+      // Lọc theo hạn mức thanh toán ngân hàng (≥ 20 triệu)
+      const totalAmount = Number(item?.tong_tien_thanh_toan) || 0;
+      if (amountFilter === 'gte20' && totalAmount < 20000000) return false;
+      if (amountFilter === 'lt20' && totalAmount >= 20000000) return false;
+
+      // Lọc theo nguồn luồng (HĐ Điện tử thường vs HĐ Máy tính tiền POS)
+      const isPos = String(item?.loai_hoa_don || '').toLowerCase().includes('máy tính tiền') || 
+                    String(item?.id || '').includes('pos') || 
+                    String(item?.stream_type || '').includes('pos');
+      if (streamFilter === 'pos' && !isPos) return false;
+      if (streamFilter === 'normal' && isPos) return false;
+
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
         const partnerName = String((activeTab === 'purchase' ? item?.ten_nguoi_ban : item?.ten_nguoi_mua) || '');
@@ -120,7 +134,7 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
       }
       return true;
     });
-  }, [currentList, statusFilter, searchTerm, activeTab]);
+  }, [currentList, statusFilter, amountFilter, streamFilter, searchTerm, activeTab]);
 
   const displayPeriod = syncMeta?.periodLabel || (syncMeta?.month ? `Tháng ${syncMeta.month}/${syncMeta.year}` : (syncMeta?.quarter ? `Quý ${syncMeta.quarter}/${syncMeta.year}` : `Năm ${syncMeta?.year}`));
 
@@ -304,7 +318,7 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
             </div>
 
             {activeTab !== 'tax_summary' && (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <div className="relative">
                   <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
                   <input
@@ -312,19 +326,56 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                     placeholder="Tìm theo MST, Tên, Số HĐ..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="text-xs pl-8 pr-3 py-1.5 bg-white border border-slate-300 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 w-56"
+                    className="text-xs pl-8 pr-3 py-1.5 bg-white border border-slate-300 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 w-48 sm:w-56"
                   />
                 </div>
 
+                {/* Bộ lọc trạng thái */}
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-slate-800 focus:outline-none focus:border-blue-500"
+                  className="text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
                 >
                   <option value="all">Tất cả trạng thái</option>
-                  <option value="valid">Chỉ HĐ Hợp lệ</option>
-                  <option value="invalid">Chỉ HĐ Đã Hủy / Thay Thế</option>
+                  <option value="valid">✓ Chỉ HĐ Hợp lệ</option>
+                  <option value="invalid">✗ HĐ Đã Hủy / Thay Thế</option>
                 </select>
+
+                {/* Bộ lọc hạn mức thanh toán ngân hàng (≥ 20 triệu) */}
+                <select
+                  value={amountFilter}
+                  onChange={(e) => setAmountFilter(e.target.value)}
+                  className="text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
+                >
+                  <option value="all">Tất cả giá trị</option>
+                  <option value="gte20">🏦 HĐ ≥ 20 Triệu (Bắt buộc CK ngân hàng)</option>
+                  <option value="lt20">💵 HĐ &lt; 20 Triệu (Tiền mặt / CK)</option>
+                </select>
+
+                {/* Bộ lọc nguồn xuất (Điện tử vs Máy tính tiền) */}
+                <select
+                  value={streamFilter}
+                  onChange={(e) => setStreamFilter(e.target.value)}
+                  className="text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
+                >
+                  <option value="all">Tất cả nguồn HĐ</option>
+                  <option value="normal">📄 HĐ Điện tử</option>
+                  <option value="pos">🧾 HĐ Máy tính tiền (POS)</option>
+                </select>
+
+                {(searchTerm || statusFilter !== 'all' || amountFilter !== 'all' || streamFilter !== 'all') && (
+                  <button
+                    onClick={() => {
+                      setSearchTerm('');
+                      setStatusFilter('all');
+                      setAmountFilter('all');
+                      setStreamFilter('all');
+                    }}
+                    className="text-xs text-rose-600 hover:text-rose-700 font-medium px-2 py-1 hover:bg-rose-50 rounded-lg transition"
+                  >
+                    Xóa bộ lọc
+                  </button>
+                )}
               </div>
             )}
           </div>

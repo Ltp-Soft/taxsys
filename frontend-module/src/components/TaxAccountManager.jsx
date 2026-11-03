@@ -112,6 +112,13 @@ export default function TaxAccountManager({ onSelectAccount, activeAccount }) {
         setEditError('⛔ Không thể đổi sang MST của công ty khác! Gói bản quyền định danh cố định tối đa 02 MST. Bạn chỉ được phép điều chỉnh tối đa 1 ký tự nếu gõ nhầm một số khi nhập liệu.');
         return;
       }
+      // Bắn sự kiện đồng bộ cập nhật MST đã sửa sang Chrome Extension để không bị tính trùng hạn mức
+      if (typeof window !== 'undefined') {
+        window.postMessage({
+          type: 'TAX_EXTENSION_UPDATE_MST',
+          payload: { oldMst: editingAccount.mst, newMst: trimmedMst }
+        }, '*');
+      }
     }
 
     const updatedAcc = {

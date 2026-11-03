@@ -762,6 +762,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.type === 'UPDATE_MST') {
+    const { oldMst, newMst } = request.payload || {};
+    chrome.storage.local.get(['registered_msts'], (store) => {
+      let registered = store.registered_msts || [];
+      if (oldMst && newMst) {
+        registered = registered.map(m => m === oldMst ? newMst : m);
+        chrome.storage.local.set({ registered_msts: registered }, () => {
+          console.log('[MST Update] Updated registered MSTs after typo fix:', registered);
+          sendResponse({ success: true, registered_msts: registered });
+        });
+      } else {
+        sendResponse({ success: false, message: 'Invalid payload' });
+      }
+    });
+    return true;
+  }
+
   if (request.type === 'PING') {
     sendResponse({ success: true, version: '1.0.1', status: 'ready' });
     return false;
