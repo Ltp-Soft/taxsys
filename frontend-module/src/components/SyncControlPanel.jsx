@@ -313,24 +313,25 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
     return () => clearInterval(timer);
   }, [checkoutOrder, checkoutSuccess]);
 
-  // Kích hoạt bằng mã License Key có sẵn
+  // Kích hoạt hoặc khôi phục bằng mã License Key hoặc Email đã mua
   const handleActivateManualKey = async (e) => {
     e.preventDefault();
-    const key = manualLicenseInput.trim().toUpperCase();
-    if (!key) return;
+    const keyInput = manualLicenseInput.trim();
+    if (!keyInput) return;
     setManualLicenseMsg(null);
     try {
       const res = await fetch('https://ltp-soft.com/api/tax/verify-license', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ license_key: key })
+        body: JSON.stringify({ license_key: keyInput })
       });
       const data = await res.json();
       if (data && data.valid) {
-        localStorage.setItem('ltp_tax_license_key', key);
-        setManualLicenseMsg({ type: 'SUCCESS', text: `✓ Kích hoạt thành công (${data.message || 'Bản quyền PRO'})! Bạn có thể đóng bảng này và tra cứu ngay.` });
+        const finalKey = data.license_key || keyInput.toUpperCase();
+        localStorage.setItem('ltp_tax_license_key', finalKey);
+        setManualLicenseMsg({ type: 'SUCCESS', text: `✓ ${data.message || 'Kích hoạt bản quyền PRO thành công'}! Bạn có thể đóng bảng này và bấm Tải & Đồng Bộ ngay.` });
       } else {
-        setManualLicenseMsg({ type: 'ERROR', text: data?.error || 'Mã bản quyền không hợp lệ hoặc chưa được kích hoạt.' });
+        setManualLicenseMsg({ type: 'ERROR', text: data?.error || 'Mã bản quyền hoặc Email không hợp lệ / chưa được kích hoạt.' });
       }
     } catch (err) {
       setManualLicenseMsg({ type: 'ERROR', text: 'Không thể kiểm tra mã bản quyền: ' + err.message });
@@ -996,11 +997,11 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
               </>
             )}
 
-            {/* TAB 2: KÍCH HOẠT LICENSE KEY CÓ SẴN */}
+            {/* TAB 2: KÍCH HOẠT / KHÔI PHỤC BẢN QUYỀN BẰNG EMAIL HOẶC LICENSE KEY */}
             {activeTabModal === 'manual' && (
               <form onSubmit={handleActivateManualKey} className="space-y-3.5">
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Nếu bạn được tặng bản quyền kèm theo hợp đồng phần mềm Chấm Công LTP Attendance hoặc đã có License Key, hãy nhập mã vào đây:
+                  Nếu bạn đổi sang máy tính mới, cài lại Windows hoặc đã mua bản quyền trước đó, chỉ cần nhập <strong>Email đã đăng ký</strong> (hoặc <strong>Mã License Key</strong> trong email) để mở khóa lại ngay lập tức:
                 </p>
 
                 {manualLicenseMsg && (
@@ -1010,14 +1011,14 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
                 )}
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Mã License Key</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Nhập Email Đã Mua Hoặc Mã License Key</label>
                   <input
                     type="text"
                     required
-                    placeholder="VD: LTP-TAX-12345-XXXX"
+                    placeholder="VD: ketoan@gmail.com hoặc LTP-TAX-12345"
                     value={manualLicenseInput}
-                    onChange={(e) => setManualLicenseInput(e.target.value.toUpperCase())}
-                    className="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500 font-mono font-bold uppercase"
+                    onChange={(e) => setManualLicenseInput(e.target.value)}
+                    className="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
                   />
                 </div>
 

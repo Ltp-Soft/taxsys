@@ -646,22 +646,45 @@ async function handleSyncRequest(payload) {
   const periodDesc = month ? `Tháng ${month}/${year}` : (quarter ? `Quý ${quarter}/${year}` : `${from_date} đến ${to_date}`);
   console.log(`[SyncJob] Starting sync for MST: ${username}, Period: ${periodDesc}`);
 
-  // Kiểm tra giới hạn 1 MST miễn phí (lưu trong chrome.storage.local - chống bypass Ctrl+F5)
-  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-    const storeData = await chrome.storage.local.get(['registered_msts', 'license_key']);
-    const registeredMsts = storeData.registered_msts || [];
-    const activeLicense = (license_key && license_key !== 'free-lead-magnet') ? license_key : storeData.license_key;
-
-    if (license_key && license_key !== 'free-lead-magnet' && license_key !== storeData.license_key) {
-      await chrome.storage.local.set({ license_key: license_key });
+  // Kiểm tra giới hạn 2 MST miễn phí & đồng bộ Bản Quyền theo cả Máy tính (local) VÀ Tài khoản Gmail Chrome (sync)
+  if (typeof chrome !== 'undefined' && chrome.storage) {
+    const localData = await chrome.storage.local.get(['registered_msts', 'license_key']);
+    let syncData = {};
+    if (chrome.storage.sync) {
+      try {
+        syncData = await chrome.storage.sync.get(['registered_msts', 'license_key']);
+      } catch (e) {}
     }
 
-    if (!registeredMsts.includes(username)) {
-      if (registeredMsts.length >= 2 && !activeLicense) {
-        throw new Error('LIMIT_EXCEEDED: Bạn đang sử dụng gói Miễn phí (đã dùng tối đa 02 Mã số thuế: ' + registeredMsts.join(', ') + '). Để tra cứu từ MST thứ 3 trở lên (' + username + '), vui lòng nâng cấp bản Pro hoặc đăng ký sử dụng phần mềm chấm công LTP Attendance!');
+    // Hợp nhất danh sách MST đã dùng từ cả máy tính và tài khoản Gmail đăng nhập Chrome
+    const mergedMsts = Array.from(new Set([
+      ...(localData.registered_msts || []),
+      ...(syncData.registered_msts || [])
+    ]));
+
+    const activeLicense = (license_key && license_key !== 'free-lead-magnet')
+      ? license_key
+      : (localData.license_key || syncData.license_key || '');
+
+    if (activeLicense) {
+      if (localData.license_key !== activeLicense) {
+        await chrome.storage.local.set({ license_key: activeLicense });
       }
-      registeredMsts.push(username);
-      await chrome.storage.local.set({ registered_msts: registeredMsts });
+      if (chrome.storage.sync && syncData.license_key !== activeLicense) {
+        try { await chrome.storage.sync.set({ license_key: activeLicense }); } catch (e) {}
+      }
+    }
+
+    if (!mergedMsts.includes(username)) {
+      if (mergedMsts.length >= 2 && !activeLicense) {
+        throw new Error('LIMIT_EXCEEDED: Bạn đang sử dụng gói Miễn phí (đã dùng tối đa 02 Mã số thuế: ' + mergedMsts.join(', ') + '). Để tra cứu từ MST thứ 3 trở lên (' + username + '), vui lòng nâng cấp bản Pro hoặc đăng ký sử dụng phần mềm chấm công LTP Attendance!');
+      }
+      mergedMsts.push(username);
+    }
+
+    await chrome.storage.local.set({ registered_msts: mergedMsts });
+    if (chrome.storage.sync) {
+      try { await chrome.storage.sync.set({ registered_msts: mergedMsts }); } catch (e) {}
     }
   }
 
