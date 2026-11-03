@@ -11,7 +11,10 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
   const [toDate, setToDate] = useState('');
   const [strictPeriod, setStrictPeriod] = useState(true); // Bộ lọc thông minh GMT+7 & loại trừ sai kỳ
   const [includePos, setIncludePos] = useState(true); // Mặc định BẬT để quét vét cạn 100% không bỏ sót HĐ Mua vào từ máy tính tiền
-  const [backendUrl, setBackendUrl] = useState('http://localhost:3001');
+  const defaultBackend = (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
+    ? window.location.origin
+    : 'http://localhost:3001';
+  const [backendUrl, setBackendUrl] = useState(defaultBackend);
 
   // Quản lý Modal nâng cấp bản quyền khi vượt quá 1 MST
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
@@ -63,18 +66,77 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
         });
 
         if (d.stage === 'NEED_MANUAL_CAPTCHA') {
-          setCaptchaSvg(d.captcha_svg || '');
-          setCaptchaCkey(d.ckey || '');
-          setShowCaptchaModal(true);
+          const svgData = d.captcha_svg || '';
+          const ckeyData = d.ckey || '';
+          setCaptchaSvg(svgData);
+          setCaptchaCkey(ckeyData);
+
+          // Cố gắng tự giải Captcha serverless bằng Google Gemini AI trước khi bắt nhập tay
+          if (svgData && ckeyData) {
+            setProgress(prev => ({
+              ...prev,
+              step: '🤖 Đang tự động giải mã Captcha bằng Google Gemini AI...',
+              percent: 9
+            }));
+            const effectiveBackend = (backendUrl === 'http://localhost:3001' && typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
+              ? window.location.origin
+              : backendUrl;
+
+            fetch(`${effectiveBackend}/api/v1/solve-captcha`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image: svgData, ckey: ckeyData })
+            })
+              .then(r => r.json())
+              .then(data => {
+                if (data && data.success && data.code) {
+                  console.log('[AutoCaptcha] Solved successfully by AI serverless:', data.code);
+                  handleStartSync(data.code, ckeyData);
+                } else {
+                  setShowCaptchaModal(true);
+                }
+              })
+              .catch(err => {
+                console.warn('[AutoCaptcha] Fallback failed:', err);
+                setShowCaptchaModal(true);
+              });
+          } else {
+            setShowCaptchaModal(true);
+          }
         }
       }
 
       if (event.data?.type === 'TAX_EXTENSION_SYNC_RESULT') {
         const res = event.data.response;
         if (res && res.need_manual_captcha) {
-          setCaptchaSvg(res.captcha_svg || '');
-          setCaptchaCkey(res.ckey || '');
-          setShowCaptchaModal(true);
+          const svgData = res.captcha_svg || '';
+          const ckeyData = res.ckey || '';
+          setCaptchaSvg(svgData);
+          setCaptchaCkey(ckeyData);
+
+          if (svgData && ckeyData) {
+            const effectiveBackend = (backendUrl === 'http://localhost:3001' && typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
+              ? window.location.origin
+              : backendUrl;
+
+            fetch(`${effectiveBackend}/api/v1/solve-captcha`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image: svgData, ckey: ckeyData })
+            })
+              .then(r => r.json())
+              .then(data => {
+                if (data && data.success && data.code) {
+                  console.log('[AutoCaptcha] Solved successfully by AI serverless:', data.code);
+                  handleStartSync(data.code, ckeyData);
+                } else {
+                  setShowCaptchaModal(true);
+                }
+              })
+              .catch(() => setShowCaptchaModal(true));
+          } else {
+            setShowCaptchaModal(true);
+          }
           return;
         }
 
@@ -140,6 +202,10 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
       soldCount: 0
     });
 
+    const effectiveBackend = (backendUrl === 'http://localhost:3001' && typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
+      ? window.location.origin
+      : backendUrl;
+
     const payload = {
       username: activeAccount.mst,
       password: activeAccount.password,
@@ -150,7 +216,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
       to_date: syncPeriodType === 'custom' ? toDate : null,
       strict_period: strictPeriod,
       include_pos: includePos,
-      backend_url: backendUrl,
+      backend_url: effectiveBackend,
       license_key: 'free-lead-magnet',
       manual_captcha: manualCodeVal,
       manual_ckey: manualCkeyVal
