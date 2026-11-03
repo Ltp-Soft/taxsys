@@ -48,6 +48,50 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
     soldCount: 0
   });
 
+  // Đồng bộ Telemetry & Kiểm tra quyền PRO từ Server Quản Trị (ltp-soft.com)
+  const reportTaxTelemetry = async (eventType = 'PAGE_VIEW', customMst = null) => {
+    try {
+      if (typeof window === 'undefined' || !window.localStorage) return;
+      let clientId = localStorage.getItem('ltp_tax_client_id');
+      if (!clientId) {
+        clientId = 'client_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 8);
+        localStorage.setItem('ltp_tax_client_id', clientId);
+      }
+      const savedKey = localStorage.getItem('ltp_tax_license_key') || '';
+      const savedEmail = localStorage.getItem('ltp_tax_user_email') || '';
+      let savedAccounts = [];
+      try {
+        savedAccounts = JSON.parse(localStorage.getItem('tax_sync_accounts_v1') || '[]');
+      } catch {
+        savedAccounts = [];
+      }
+      const mstList = savedAccounts.map(a => ({ mst: a.mst, name: a.companyName || '' }));
+
+      const res = await fetch('https://ltp-soft.com/api/tax/telemetry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: clientId,
+          email: savedEmail,
+          license_key: savedKey,
+          mst_list: mstList,
+          current_mst: customMst || activeAccount?.mst || null,
+          event_type: eventType
+        })
+      });
+      const data = await res.json();
+      if (data && data.is_pro && data.license_key) {
+        localStorage.setItem('ltp_tax_license_key', data.license_key);
+      }
+    } catch (e) {
+      // Bỏ qua lỗi mạng nếu offline
+    }
+  };
+
+  useEffect(() => {
+    reportTaxTelemetry('PAGE_VIEW');
+  }, [activeAccount?.mst]);
+
   // Hàm lấy mã Captcha mới (ưu tiên qua Extension, tự động fallback qua API nếu khách dùng bản Extension cũ trên Store)
   const handleRefreshCaptcha = async (customNote = null) => {
     if (customNote !== null) setCaptchaModalNote(customNote);
@@ -263,6 +307,8 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
       requestId: Date.now().toString(),
       payload: payload
     }, '*');
+
+    reportTaxTelemetry('SYNC_INVOICES', activeAccount.mst);
   };
 
   // Tạo đơn hàng VietQR tự động cho bản quyền PRO
@@ -320,15 +366,29 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
     if (!keyInput) return;
     setManualLicenseMsg(null);
     try {
+      const clientId = localStorage.getItem('ltp_tax_client_id') || '';
+      let savedAccounts = [];
+      try {
+        savedAccounts = JSON.parse(localStorage.getItem('tax_sync_accounts_v1') || '[]');
+      } catch {}
+      const mstList = savedAccounts.map(a => ({ mst: a.mst, name: a.companyName || '' }));
+
       const res = await fetch('https://ltp-soft.com/api/tax/verify-license', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ license_key: keyInput })
+        body: JSON.stringify({
+          license_key: keyInput,
+          client_id: clientId,
+          mst_list: mstList
+        })
       });
       const data = await res.json();
       if (data && data.valid) {
         const finalKey = data.license_key || keyInput.toUpperCase();
         localStorage.setItem('ltp_tax_license_key', finalKey);
+        if (data.email || keyInput.includes('@')) {
+          localStorage.setItem('ltp_tax_user_email', (data.email || keyInput).trim().toLowerCase());
+        }
         setManualLicenseMsg({ type: 'SUCCESS', text: `✓ ${data.message || 'Kích hoạt bản quyền PRO thành công'}! Bạn có thể đóng bảng này và bấm Tải & Đồng Bộ ngay.` });
       } else {
         setManualLicenseMsg({ type: 'ERROR', text: data?.error || 'Mã bản quyền hoặc Email không hợp lệ / chưa được kích hoạt.' });

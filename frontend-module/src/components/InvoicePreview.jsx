@@ -15,13 +15,14 @@ import {
   CreditCard,
   Building
 } from 'lucide-react';
-import { exportInvoicesToExcel } from '../utils/excelExporter';
+import { exportInvoicesToExcel, detectInvoiceTaxRate } from '../utils/excelExporter';
 
 export default function InvoicePreview({ invoiceData, syncMeta }) {
   const [activeTab, setActiveTab] = useState('purchase'); // 'purchase' | 'sold'
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'valid' | 'invalid'
-  const [amountFilter, setAmountFilter] = useState('all'); // 'all' | 'gte20' | 'lt20'
+  const [amountFilter, setAmountFilter] = useState('all'); // 'all' | 'gte5' | 'lt5'
+  const [taxRateFilter, setTaxRateFilter] = useState('all'); // 'all' | '0%' | '5%' | '8%' | '10%'
   const [streamFilter, setStreamFilter] = useState('all'); // 'all' | 'normal' | 'pos'
   const [isExporting, setIsExporting] = useState(false);
   const containerRef = useRef(null);
@@ -115,6 +116,12 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
       if (amountFilter === 'gte5' && totalAmount < 5000000) return false;
       if (amountFilter === 'lt5' && totalAmount >= 5000000) return false;
 
+      // Lọc theo mức thuế suất GTGT (0%, 5%, 8%, 10%)
+      if (taxRateFilter !== 'all') {
+        const rateInfo = detectInvoiceTaxRate(item);
+        if (rateInfo.code !== taxRateFilter) return false;
+      }
+
       // Lọc theo nguồn luồng (HĐ Điện tử thường vs HĐ Máy tính tiền POS)
       const isPos = String(item?.loai_hoa_don || '').toLowerCase().includes('máy tính tiền') || 
                     String(item?.id || '').includes('pos') || 
@@ -134,7 +141,7 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
       }
       return true;
     });
-  }, [currentList, statusFilter, amountFilter, streamFilter, searchTerm, activeTab]);
+  }, [currentList, statusFilter, amountFilter, taxRateFilter, streamFilter, searchTerm, activeTab]);
 
   const displayPeriod = syncMeta?.periodLabel || (syncMeta?.month ? `Tháng ${syncMeta.month}/${syncMeta.year}` : (syncMeta?.quarter ? `Quý ${syncMeta.quarter}/${syncMeta.year}` : `Năm ${syncMeta?.year}`));
 
@@ -352,6 +359,19 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                   <option value="lt5">💵 HĐ &lt; 5 Triệu (Tiền mặt / CK)</option>
                 </select>
 
+                {/* Bộ lọc theo mức thuế suất GTGT (0%, 5%, 8%, 10%) */}
+                <select
+                  value={taxRateFilter}
+                  onChange={(e) => setTaxRateFilter(e.target.value)}
+                  className="text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
+                >
+                  <option value="all">🎨 Tất cả thuế suất</option>
+                  <option value="0%">⚪ Thuế suất 0% / KCT</option>
+                  <option value="5%">🔵 Thuế suất 5%</option>
+                  <option value="8%">🟢 Thuế suất 8%</option>
+                  <option value="10%">🟠 Thuế suất 10%</option>
+                </select>
+
                 {/* Bộ lọc nguồn xuất (Điện tử vs Máy tính tiền) */}
                 <select
                   value={streamFilter}
@@ -363,12 +383,13 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                   <option value="pos">🧾 HĐ Máy tính tiền (POS)</option>
                 </select>
 
-                {(searchTerm || statusFilter !== 'all' || amountFilter !== 'all' || streamFilter !== 'all') && (
+                {(searchTerm || statusFilter !== 'all' || amountFilter !== 'all' || taxRateFilter !== 'all' || streamFilter !== 'all') && (
                   <button
                     onClick={() => {
                       setSearchTerm('');
                       setStatusFilter('all');
                       setAmountFilter('all');
+                      setTaxRateFilter('all');
                       setStreamFilter('all');
                     }}
                     className="text-xs text-rose-600 hover:text-rose-700 font-medium px-2 py-1 hover:bg-rose-50 rounded-lg transition"
@@ -608,6 +629,7 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                     <th className="p-2.5 text-center">Ngày lập</th>
                     <th className="p-2.5">{activeTab === 'purchase' ? 'Người Bán' : 'Người Mua'}</th>
                     <th className="p-2.5 text-right">Tiền Chưa Thuế</th>
+                    <th className="p-2.5 text-center">Thuế Suất</th>
                     <th className="p-2.5 text-right">Thuế GTGT</th>
                     <th className="p-2.5 text-right">Tổng Thanh Toán</th>
                     <th className="p-2.5 text-center">Trạng Thái</th>
@@ -616,13 +638,24 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                 <tbody className="divide-y divide-slate-100 text-slate-700">
                   {filteredList.length === 0 ? (
                     <tr>
-                      <td colSpan="10" className="text-center py-8 text-slate-400">
+                      <td colSpan="11" className="text-center py-8 text-slate-400">
                         Không tìm thấy hóa đơn nào phù hợp với bộ lọc tìm kiếm.
                       </td>
                     </tr>
                   ) : (
                     filteredList.map((item, idx) => {
                       const isValid = item.is_valid_for_tax;
+                      const taxRateInfo = detectInvoiceTaxRate(item);
+                      const rateBadgeClass =
+                        taxRateInfo.code === '0%'
+                          ? 'bg-slate-200 text-slate-700 border-slate-300'
+                          : taxRateInfo.code === '5%'
+                          ? 'bg-sky-100 text-sky-800 border-sky-300'
+                          : taxRateInfo.code === '8%'
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                          : taxRateInfo.code === '10%'
+                          ? 'bg-orange-100 text-orange-800 border-orange-300'
+                          : 'bg-purple-100 text-purple-800 border-purple-300';
                       return (
                         <tr
                           key={item.id || idx}
@@ -653,6 +686,11 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                           </td>
                           <td className="p-2.5 text-right font-medium">
                             {Number(item.tong_tien_chua_thue || 0).toLocaleString('vi-VN')} đ
+                          </td>
+                          <td className="p-2.5 text-center">
+                            <span className={`inline-block px-2 py-0.5 rounded-md text-[11px] font-extrabold font-mono border ${rateBadgeClass}`}>
+                              {taxRateInfo.label}
+                            </span>
                           </td>
                           <td className="p-2.5 text-right font-medium">
                             {Number(item.tong_tien_thue || 0).toLocaleString('vi-VN')} đ
