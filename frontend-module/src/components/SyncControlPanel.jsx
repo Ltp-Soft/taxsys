@@ -230,6 +230,44 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
         ty_gia: 1,
         trang_thai_nhan: 'Hóa đơn đã bị hủy',
         is_valid_for_tax: false // Hóa đơn bị hủy, test xem nền vàng và loại trừ
+      },
+      {
+        id: '4',
+        loai_hoa_don: 'HĐ Điện tử',
+        ky_hieu_mau_so: '1',
+        ky_hieu_hoa_don: 'C26TDD',
+        so_hoa_don: '00003412',
+        ngay_lap: '24/02/2026',
+        mst_nguoi_ban: '0101234888',
+        ten_nguoi_ban: 'TẬP ĐOÀN CÔNG NGHỆ VÀ VIỄN THÔNG HẠ TẦNG SỐ',
+        dia_chi_nguoi_ban: 'Tòa nhà FPT, Phố Duy Tân, Cầu Giấy, Hà Nội',
+        tong_tien_chua_thue: 45000000,
+        tong_tien_thue: 4500000,
+        tong_tien_chiet_khau: 0,
+        tong_tien_thanh_toan: 49500000,
+        don_vi_tien_te: 'VND',
+        ty_gia: 1,
+        trang_thai_nhan: 'Hóa đơn mới',
+        is_valid_for_tax: true // Hóa đơn >= 20 triệu (bắt buộc chuyển khoản ngân hàng)
+      },
+      {
+        id: '5',
+        loai_hoa_don: 'HĐ Điện tử',
+        ky_hieu_mau_so: '1',
+        ky_hieu_hoa_don: 'C26TEE',
+        so_hoa_don: '00001099',
+        ngay_lap: '05/03/2026',
+        mst_nguoi_ban: '0309988771',
+        ten_nguoi_ban: 'CÔNG TY CP QUẢN LÝ BẤT ĐỘNG SẢN & TÒA NHÀ SÀI GÒN',
+        dia_chi_nguoi_ban: '5B Tôn Đức Thắng, Phường Bến Nghé, Quận 1, TP.HCM',
+        tong_tien_chua_thue: 28000000,
+        tong_tien_thue: 2800000,
+        tong_tien_chiet_khau: 0,
+        tong_tien_thanh_toan: 30800000,
+        don_vi_tien_te: 'VND',
+        ty_gia: 1,
+        trang_thai_nhan: 'Hóa đơn mới',
+        is_valid_for_tax: true // Hóa đơn >= 20 triệu
       }
     ];
 
@@ -331,10 +369,16 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
               <span>Đang kiểm tra Extension...</span>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 px-3 py-1 rounded-full border border-amber-200">
-              <AlertTriangle className="w-4 h-4 text-amber-600" />
-              <span>Chưa nhận Extension (Vào chrome://extensions tải lại)</span>
-            </div>
+            <a
+              href="https://chromewebstore.google.com/detail/ltp-taxsync-t%E1%BA%A3i-t%E1%BB%95ng-h%E1%BB%A3p/iapkfljbplgogeifmpfkgagnfkcgnmed"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-3 py-1 rounded-full border border-amber-300 transition shadow-xs"
+              title="Nhấn để mở trang tiện ích trên Chrome Web Store và bấm Thêm vào Chrome"
+            >
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Chưa nhận Extension 👉 Bấm Cài 1-Click trên Web Store</span>
+            </a>
           )}
         </div>
       </div>

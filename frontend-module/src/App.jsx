@@ -1,26 +1,45 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import TaxAccountManager from './components/TaxAccountManager';
 import SyncControlPanel from './components/SyncControlPanel';
 import InvoicePreview from './components/InvoicePreview';
 import LeadMagnetBanner from './components/LeadMagnetBanner';
 import {
-  HelpCircle,
   Shield,
-  Award,
-  Sparkles,
-  Download,
+  ShieldCheck,
   CheckCircle,
   ExternalLink,
-  Lock,
-  Building2
+  Download,
+  Sparkles
 } from 'lucide-react';
+
+export const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/ltp-taxsync-t%E1%BA%A3i-t%E1%BB%95ng-h%E1%BB%A3p/iapkfljbplgogeifmpfkgagnfkcgnmed?authuser=0&hl=en&pli=1';
 
 export default function App() {
   const [activeAccount, setActiveAccount] = useState(null);
   const [invoiceData, setInvoiceData] = useState(null);
   const [syncMeta, setSyncMeta] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [showExtensionGuide, setShowExtensionGuide] = useState(false);
+  const [extensionStatus, setExtensionStatus] = useState('checking');
+
+  useEffect(() => {
+    let timeoutId;
+    const handleMsg = (event) => {
+      if (event.data?.type === 'TAX_EXTENSION_READY' || event.data?.type === 'TAX_EXTENSION_PONG') {
+        setExtensionStatus('connected');
+        clearTimeout(timeoutId);
+      }
+    };
+    window.addEventListener('message', handleMsg);
+    window.postMessage({ type: 'TAX_EXTENSION_PING', requestId: 'ping_app' }, '*');
+    timeoutId = setTimeout(() => {
+      setExtensionStatus((prev) => (prev === 'connected' ? 'connected' : 'missing'));
+    }, 1500);
+
+    return () => {
+      window.removeEventListener('message', handleMsg);
+      clearTimeout(timeoutId);
+    };
+  }, []);
 
   const handleSyncCompleted = (data, meta) => {
     setInvoiceData(data);
@@ -55,18 +74,11 @@ export default function App() {
 
           {/* Navigation Links */}
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowExtensionGuide(true)}
-              className="flex items-center gap-1.5 text-xs font-bold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700/80 px-3 py-1.5 rounded-xl border border-slate-700 transition"
-            >
-              <HelpCircle className="w-4 h-4 text-blue-400" />
-              <span>Hướng Dẫn Cài Extension</span>
-            </button>
             <a
               href="https://ltp-soft.com"
               target="_blank"
               rel="noreferrer"
-              className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 px-3.5 py-1.5 rounded-xl shadow-sm transition"
+              className="flex items-center gap-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 px-3.5 py-1.5 rounded-xl shadow-sm transition"
             >
               <span>LTP Attendance</span>
               <ExternalLink className="w-3.5 h-3.5" />
@@ -94,8 +106,63 @@ export default function App() {
         </div>
       </div>
 
-      {/* Main Workspace (Trang thực thi công việc văn phòng nền trắng) */}
+      {/* Main Workspace (Trang thực thi công việc văn phòng) */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex-1 w-full space-y-5">
+        {/* Khối Cài Đặt Extension & Giải Thích Bảo Mật Chuẩn Google Chrome */}
+        <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white rounded-2xl p-5 sm:p-6 shadow-md border border-slate-700/60 relative overflow-hidden">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5 relative z-10">
+            <div className="space-y-2.5 max-w-3xl">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  Được Google Chrome Kiểm Duyệt & Xác Minh An Toàn
+                </span>
+                <span className="inline-flex items-center gap-1.5 bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[11px] font-medium px-2.5 py-0.5 rounded-full">
+                  <CheckCircle className="w-3.5 h-3.5 text-blue-400" />
+                  Nhà Phát Triển: LTP-soft.com
+                </span>
+              </div>
+
+              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                <span>💡 Tại sao cần Extension?</span>
+              </h2>
+
+              <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
+                Tiện ích chạy trực tiếp từ <strong>IP máy tính của bạn</strong> để gọi Cổng Thuế Tổng Cục Thuế (<code className="text-amber-300 bg-slate-800/80 px-1.5 py-0.5 rounded font-mono text-xs">hoadondientu.gdt.gov.vn</code>), giúp không bị nghẽn mạng và bảo mật tuyệt đối không lộ mật khẩu.
+              </p>
+
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Nhà phát triển <strong>LTP-soft.com</strong> được Google Chrome xác minh là <strong>không lưu mật khẩu và hóa đơn</strong> phía máy chủ. Toàn bộ dữ liệu nhạy cảm được xử lý và lưu trữ hoàn toàn trên máy tính của bạn. Giao diện web chỉ đóng vai trò hiển thị số liệu và xuất file báo cáo Excel chuẩn kế toán.
+              </p>
+            </div>
+
+            <div className="shrink-0 w-full lg:w-auto flex flex-col items-stretch lg:items-end gap-2.5">
+              <a
+                href={CHROME_STORE_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black text-xs sm:text-sm rounded-xl shadow-lg hover:shadow-emerald-500/25 transition transform active:scale-95 text-center"
+              >
+                <Download className="w-4 h-4 text-white" />
+                <span>Cài Đặt Tại Cửa Hàng Google Chrome</span>
+                <ExternalLink className="w-3.5 h-3.5 text-emerald-100" />
+              </a>
+
+              <div className="text-[11px] text-center lg:text-right">
+                {extensionStatus === 'connected' ? (
+                  <span className="text-emerald-400 font-bold inline-flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg">
+                    <CheckCircle className="w-3.5 h-3.5" /> Tiện ích đã sẵn sàng trên trình duyệt
+                  </span>
+                ) : (
+                  <span className="text-slate-400">
+                    Miễn phí 100% • 1-Click Thêm vào Chrome
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Khối quản lý MST Doanh Nghiệp */}
         <TaxAccountManager
           activeAccount={activeAccount}
@@ -119,81 +186,6 @@ export default function App() {
         {/* Mini Banner Tiếp Thị LTP Attendance (Gọn gàng, không choán chỗ) */}
         <LeadMagnetBanner />
       </main>
-
-      {/* Modal Hướng Dẫn Cài Đặt Chrome Extension */}
-      {showExtensionGuide && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 text-slate-800 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-200">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <Download className="w-5 h-5 text-blue-600" />
-                Hướng Dẫn Cài Đặt Extension (Chỉ mất 1 phút)
-              </h3>
-              <button
-                onClick={() => setShowExtensionGuide(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-3.5 text-xs text-slate-600 leading-relaxed">
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-blue-900 font-medium">
-                💡 <strong>Tại sao cần Extension?</strong> Tiện ích chạy trực tiếp từ IP máy tính của bạn để gọi Cổng Thuế Tổng Cục Thuế (<code className="text-blue-700 font-mono">hoadondientu.gdt.gov.vn</code>), giúp không bị nghẽn mạng và bảo mật tuyệt đối không lộ mật khẩu.
-              </div>
-
-              <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center shrink-0">
-                  1
-                </div>
-                <div>
-                  <p className="font-bold text-slate-800 mb-0.5">Mở trang Quản lý tiện ích Chrome</p>
-                  <p className="text-slate-600">Truy cập vào: <code className="bg-white px-2 py-0.5 rounded border border-slate-300 text-blue-600 font-mono">chrome://extensions</code></p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center shrink-0">
-                  2
-                </div>
-                <div>
-                  <p className="font-bold text-slate-800 mb-0.5">Bật "Chế độ cho nhà phát triển" (Developer mode)</p>
-                  <p className="text-slate-600">Gạt công tắc ở góc trên bên phải màn hình sang trạng thái BẬT.</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center shrink-0">
-                  3
-                </div>
-                <div>
-                  <p className="font-bold text-slate-800 mb-0.5">Tải thư mục Extension</p>
-                  <p className="text-slate-600">Bấm nút <strong>"Tải tiện ích đã giải nén" (Load unpacked)</strong> ở góc trái, sau đó chọn thư mục <code className="bg-white px-2 py-0.5 rounded border border-slate-300 font-mono text-blue-600">extension</code>.</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center shrink-0">
-                  4
-                </div>
-                <div>
-                  <p className="font-bold text-slate-800 mb-0.5">Hoàn tất & F5 lại trang Web</p>
-                  <p className="text-slate-600">Sau khi cài xong, hệ thống sẽ hiện biểu tượng màu xanh <strong>"Chrome Extension: Đã Kết Nối"</strong>.</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5 pt-3 border-t border-slate-200 flex justify-end">
-              <button
-                onClick={() => setShowExtensionGuide(false)}
-                className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-sm transition"
-              >
-                Đã Hiểu
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Footer Nhẹ Nhàng Chuẩn Văn Phòng */}
       <footer className="bg-white border-t border-slate-200 py-4 mt-auto text-slate-500 text-xs">
