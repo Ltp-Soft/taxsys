@@ -7,7 +7,7 @@ const TAX_API_CONFIG = {
   "base_url": "https://hoadondientu.gdt.gov.vn/api",
   "request_settings": {
     "page_size": 50,
-    "delay_between_requests_ms": 350,
+    "delay_between_requests_ms": 400,
     "max_captcha_retries": 3
   },
   "endpoints": {
@@ -95,6 +95,17 @@ const TAX_API_CONFIG = {
     "4": "Hóa đơn đã bị thay thế",
     "5": "Hóa đơn đã bị điều chỉnh",
     "6": "Hóa đơn đã bị hủy"
+  },
+  "check_result_dictionary": {
+    "0": "Đã cấp mã hóa đơn",
+    "1": "Đã cấp mã hóa đơn",
+    "2": "Hóa đơn không đủ điều kiện cấp mã",
+    "3": "Hóa đơn không đủ điều kiện cấp mã",
+    "4": "Hóa đơn không đủ điều kiện cấp mã",
+    "5": "Đã cấp mã hóa đơn",
+    "6": "Đã cấp mã hóa đơn",
+    "7": "Đã cấp mã hóa đơn",
+    "8": "Đã cấp mã hóa đơn"
   }
 };
 
@@ -118,7 +129,7 @@ export async function onRequestGet() {
     headers: {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
-      'Cache-Control': 'public, max-age=300'
+      'Cache-Control': 'no-store, no-cache, must-revalidate'
     }
   });
 }

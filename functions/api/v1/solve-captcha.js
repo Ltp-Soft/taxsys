@@ -18,27 +18,63 @@ export async function onRequestOptions() {
   });
 }
 
-// GET /api/v1/solve-captcha -> Fetches a fresh Captcha from GDT Tax Portal (fallback for manual modal refresh)
-export async function onRequestGet() {
+// GET /api/v1/solve-captcha -> Fetches a fresh Captcha from GDT Tax Portal (or measures real-time Ping when ?ping=1)
+export async function onRequestGet(context) {
+  const startMs = Date.now();
   try {
-    const res = await fetch('https://hoadondientu.gdt.gov.vn/api/captcha', {
+    const reqUrl = new URL(context.request.url);
+    const isPingOnly = reqUrl.searchParams.get('ping') === '1';
+
+    const res = await fetch(`https://hoadondientu.gdt.gov.vn/api/captcha`, {
+      method: 'GET',
+      cache: 'no-store',
       headers: {
         'Accept': 'application/json, text/plain, */*',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
     });
+    const pingMs = Math.max(1, Date.now() - startMs);
+
     if (!res.ok) {
       throw new Error(`Tax Portal captcha HTTP ${res.status}`);
     }
+
+    if (isPingOnly) {
+      return new Response(JSON.stringify({
+        success: true,
+        ping_ms: pingMs,
+        status: 'online',
+        checked_at: new Date().toISOString()
+      }), {
+        status: 200,
+        headers: {
+          ...CORS_HEADERS,
+          'Cache-Control': 'no-store, no-cache, must-revalidate'
+        }
+      });
+    }
+
     const data = await res.json();
     return new Response(JSON.stringify({
       success: true,
+      ping_ms: pingMs,
       ckey: data.key || data.ckey || '',
       content: data.content || data.svg || ''
-    }), { status: 200, headers: CORS_HEADERS });
+    }), {
+      status: 200,
+      headers: {
+        ...CORS_HEADERS,
+        'Cache-Control': 'no-store, no-cache, must-revalidate'
+      }
+    });
   } catch (err) {
+    const pingMs = Math.max(1, Date.now() - startMs);
     return new Response(JSON.stringify({
       success: false,
+      ping_ms: pingMs,
+      status: 'slow_or_offline',
       message: err.message
     }), { status: 500, headers: CORS_HEADERS });
   }

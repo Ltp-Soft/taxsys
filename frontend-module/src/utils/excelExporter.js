@@ -29,6 +29,102 @@ function formatToVietnamDate(dateVal) {
 }
 
 /**
+ * Chuẩn hóa cột "Kết quả kiểm tra hóa đơn" (ttxly / ket_qua_kiem_tra từ Tổng Cục Thuế)
+ * - Bình thường: "Đã cấp mã hóa đơn" (mã ttxly: 5, 6, 8, 0, 1, 7)
+ * - Bất thường (Loại trừ khỏi chi phí/thuế): "Hóa đơn không đủ điều kiện cấp mã" (mã ttxly: 2, 3, 4 hoặc từ chối cấp mã)
+ */
+export function resolveInvoiceCheckResult(inv) {
+  if (!inv) {
+    return {
+      isRejectedCode: false,
+      code: 'DA_CAP_MA',
+      label: 'Đã cấp mã hóa đơn',
+      rawCode: '5'
+    };
+  }
+
+  const rawVal =
+    inv.ket_qua_kiem_tra !== undefined && inv.ket_qua_kiem_tra !== ''
+      ? inv.ket_qua_kiem_tra
+      : (inv.raw_data?.ttxly ?? inv.ttxly ?? inv.raw_data?.kqcht ?? '');
+
+  const str = String(rawVal).trim();
+  const lower = str.toLowerCase();
+
+  // Mã ttxly của Tổng Cục Thuế cho hóa đơn bị từ chối / không đủ điều kiện cấp mã: 2, 3, 4
+  const isRejected =
+    str === '2' ||
+    str === '3' ||
+    str === '4' ||
+    lower.includes('không đủ điều kiện') ||
+    lower.includes('khong du dieu kien') ||
+    lower.includes('từ chối cấp mã') ||
+    lower.includes('cqt từ chối') ||
+    lower.includes('không cấp mã');
+
+  if (isRejected) {
+    return {
+      isRejectedCode: true,
+      code: 'KHONG_DU_DIEU_KIEN',
+      label: 'Hóa đơn không đủ điều kiện cấp mã',
+      rawCode: str || '4'
+    };
+  }
+
+  return {
+    isRejectedCode: false,
+    code: 'DA_CAP_MA',
+    label: 'Đã cấp mã hóa đơn',
+    rawCode: str || '5'
+  };
+}
+
+/**
+ * Đánh giá toàn diện tính hợp lệ của hóa đơn để kê khai thuế & tính chi phí:
+ * Loại trừ cả Hóa đơn đã hủy/thay thế (tthai = 4, 6) VÀ "Hóa đơn không đủ điều kiện cấp mã" (ttxly = 2, 3, 4)
+ */
+export function evaluateInvoiceValidity(inv) {
+  if (!inv) {
+    return {
+      isValid: false,
+      isCancelledOrReplaced: true,
+      isRejectedCode: false,
+      checkResultLabel: 'Đã cấp mã hóa đơn',
+      ghiChuKeKhai: 'Đã hủy/thay thế (Không kê khai)'
+    };
+  }
+
+  const checkInfo = resolveInvoiceCheckResult(inv);
+  const statusStr = String(inv.trang_thai_hoa_don ?? inv.raw_data?.tthai ?? '1').trim();
+  const statusLabel = String(inv.trang_thai_nhan || '').toLowerCase();
+
+  const isCancelledOrReplaced =
+    statusStr === '4' ||
+    statusStr === '6' ||
+    statusLabel.includes('đã bị hủy') ||
+    statusLabel.includes('đã bị thay thế') ||
+    (inv.is_valid_for_tax === false && !checkInfo.isRejectedCode);
+
+  const isRejectedCode = checkInfo.isRejectedCode;
+  const isValid = !isCancelledOrReplaced && !isRejectedCode;
+
+  let ghiChuKeKhai = 'Hợp lệ';
+  if (isRejectedCode) {
+    ghiChuKeKhai = 'Không đủ ĐK cấp mã (Loại trừ)';
+  } else if (isCancelledOrReplaced) {
+    ghiChuKeKhai = 'Đã hủy/thay thế (Không kê khai)';
+  }
+
+  return {
+    isValid,
+    isCancelledOrReplaced,
+    isRejectedCode,
+    checkResultLabel: checkInfo.label,
+    ghiChuKeKhai
+  };
+}
+
+/**
  * Tự động nhận diện và phân loại mức Thuế suất GTGT của hóa đơn (0%, 5%, 8%, 10%, KCT, Nhiều mức)
  */
 export function detectInvoiceTaxRate(inv) {
@@ -152,6 +248,19 @@ export async function exportInvoicesToExcel({
     color: { argb: 'FFC00000' }
   };
 
+  const REJECTED_CODE_FILL = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFFFEBEE' }
+  };
+
+  const REJECTED_CODE_FONT = {
+    name: 'Times New Roman',
+    size: 10,
+    bold: true,
+    color: { argb: 'FFFF0000' }
+  };
+
   const THIN_BORDER = {
     top: { style: 'thin', color: { argb: 'FFD9D9D9' } },
     left: { style: 'thin', color: { argb: 'FFD9D9D9' } },
@@ -165,7 +274,7 @@ export async function exportInvoicesToExcel({
     fgColor: { argb: 'FFE2EFDA' }
   };
 
-  // Cấu hình 18 cột (thêm cột Thuế suất ở cột K - vị trí 11)
+  // Cấu hình 19 cột (Cột R = Kết quả kiểm tra hóa đơn, Cột S = Ghi chú kê khai)
   const getColumnsConfig = (isPurchase) => [
     { header: 'STT', key: 'stt', width: 8, alignment: { horizontal: 'center' } },
     { header: 'Loại HĐ', key: 'loai_hoa_don', width: 16, alignment: { horizontal: 'center' } },
@@ -183,7 +292,8 @@ export async function exportInvoicesToExcel({
     { header: 'Tổng thanh toán', key: 'tong_tien_thanh_toan', width: 20, alignment: { horizontal: 'right' }, numFmt: '#,##0' },
     { header: 'Loại tiền', key: 'don_vi_tien_te', width: 10, alignment: { horizontal: 'center' } },
     { header: 'Tỷ giá', key: 'ty_gia', width: 10, alignment: { horizontal: 'right' }, numFmt: '#,##0.00' },
-    { header: 'Trạng thái HĐ', key: 'trang_thai_nhan', width: 22, alignment: { horizontal: 'left' } },
+    { header: 'Trạng thái HĐ', key: 'trang_thai_nhan', width: 20, alignment: { horizontal: 'left' } },
+    { header: 'Kết quả kiểm tra hóa đơn', key: 'ket_qua_kiem_tra', width: 28, alignment: { horizontal: 'left' } },
     { header: 'Ghi chú kê khai', key: 'ghi_chu', width: 26, alignment: { horizontal: 'left' } }
   ];
 
@@ -194,24 +304,24 @@ export async function exportInvoicesToExcel({
     });
 
     // 1. Tiêu đề công ty & bảng kê
-    sheet.mergeCells('A1:R1');
+    sheet.mergeCells('A1:S1');
     const titleRow = sheet.getCell('A1');
     titleRow.value = titleText.toUpperCase();
     titleRow.font = { name: 'Times New Roman', size: 16, bold: true, color: { argb: 'FF1F4E79' } };
     titleRow.alignment = { horizontal: 'center', vertical: 'middle' };
     sheet.getRow(1).height = 32;
 
-    sheet.mergeCells('A2:R2');
+    sheet.mergeCells('A2:S2');
     const subTitle = sheet.getCell('A2');
     subTitle.value = `Mã số thuế: ${mst} | Kỳ kê khai: ${periodDisplay} | Ngày xuất file: ${new Date().toLocaleDateString('vi-VN')}`;
     subTitle.font = { name: 'Times New Roman', size: 11, italic: true };
     subTitle.alignment = { horizontal: 'center', vertical: 'middle' };
     sheet.getRow(2).height = 20;
 
-    sheet.mergeCells('A3:R3');
+    sheet.mergeCells('A3:S3');
     const noteCell = sheet.getCell('A3');
-    noteCell.value = '(* Phân loại màu Thuế suất: [Xám: 0% / KCT] • [Xanh dương: 5%] • [Xanh lá: 8%] • [Cam nhạt: 10%] | Hóa đơn hủy/thay thế tô nền vàng và loại trừ khỏi Tổng hợp lệ)';
-    noteCell.font = { name: 'Times New Roman', size: 10, italic: true, color: { argb: 'FF595959' } };
+    noteCell.value = '(* Thuế suất: [Xám: 0%] • [Xanh dương: 5%] • [Xanh lá: 8%] • [Cam nhạt: 10%] | Chữ đỏ đậm: "Hóa đơn không đủ điều kiện cấp mã" — Tự động loại trừ khỏi Tổng hợp lệ bằng hàm =SUMIF / =SUMIFS)';
+    noteCell.font = { name: 'Times New Roman', size: 10, italic: true, color: { argb: 'FFC00000' } };
     noteCell.alignment = { horizontal: 'center', vertical: 'middle' };
     sheet.getRow(3).height = 18;
 
@@ -236,6 +346,10 @@ export async function exportInvoicesToExcel({
     let sumThueHopLe = 0;
     let sumChietKhauHopLe = 0;
     let sumThanhToanHopLe = 0;
+    let sumChuaThueRejected = 0;
+    let sumThueRejected = 0;
+    let sumChietKhauRejected = 0;
+    let sumThanhToanRejected = 0;
     let sumChuaThueRaw = 0;
     let sumThueRaw = 0;
     let sumChietKhauRaw = 0;
@@ -253,7 +367,9 @@ export async function exportInvoicesToExcel({
       const row = sheet.getRow(currentRowIdx);
       row.height = 22;
 
-      const isValid = inv.is_valid_for_tax !== false && inv.trang_thai_hoa_don !== '4' && inv.trang_thai_hoa_don !== '6';
+      const evalInfo = evaluateInvoiceValidity(inv);
+      const isValid = evalInfo.isValid;
+      const isRejectedCode = evalInfo.isRejectedCode;
 
       const tienChuaThue = Number(inv.tong_tien_chua_thue) || 0;
       const tienThue = Number(inv.tong_tien_thue) || 0;
@@ -266,6 +382,13 @@ export async function exportInvoicesToExcel({
       sumThueRaw += tienThue;
       sumChietKhauRaw += chietKhau;
       sumThanhToanRaw += thanhToan;
+
+      if (isRejectedCode) {
+        sumChuaThueRejected += tienChuaThue;
+        sumThueRejected += tienThue;
+        sumChietKhauRejected += chietKhau;
+        sumThanhToanRejected += thanhToan;
+      }
 
       if (isValid) {
         sumChuaThueHopLe += tienChuaThue;
@@ -299,15 +422,20 @@ export async function exportInvoicesToExcel({
         thanhToan,
         inv.don_vi_tien_te || 'VND',
         inv.ty_gia || 1,
-        inv.trang_thai_nhan || '',
-        isValid ? 'Hợp lệ' : 'Đã hủy/thay thế (Không kê khai)'
+        inv.trang_thai_nhan || 'Hóa đơn mới',
+        evalInfo.checkResultLabel,
+        evalInfo.ghiChuKeKhai
       ];
 
       rowValues.forEach((val, valIdx) => {
         const cell = row.getCell(valIdx + 1);
         cell.value = val;
 
-        if (!isValid) {
+        if (isRejectedCode) {
+          // Hóa đơn không đủ điều kiện cấp mã -> Tô chữ ĐỎ ĐẬM + nền cảnh báo đỏ nhạt
+          cell.font = REJECTED_CODE_FONT;
+          cell.fill = REJECTED_CODE_FILL;
+        } else if (!isValid) {
           cell.font = WARNING_FONT;
           cell.fill = WARNING_FILL;
         } else if (valIdx === 10) {
@@ -322,6 +450,14 @@ export async function exportInvoicesToExcel({
             size: 10,
             bold: true,
             color: { argb: taxRateInfo.textArgb }
+          };
+        } else if (valIdx === 17) {
+          // Cột R (valIdx === 17): "Đã cấp mã hóa đơn"
+          cell.font = {
+            name: 'Times New Roman',
+            size: 10,
+            bold: true,
+            color: { argb: 'FF276A3C' }
           };
         } else if (valIdx === 9 || valIdx === 11 || valIdx === 13) {
           // Bôi màu nền dịu đồng bộ cho các cột Tiền chưa thuế, Tiền thuế GTGT, Tổng thanh toán
@@ -343,7 +479,7 @@ export async function exportInvoicesToExcel({
         cell.alignment = {
           vertical: 'middle',
           horizontal: cols[valIdx].alignment.horizontal,
-          wrapText: valIdx === 7 || valIdx === 8
+          wrapText: valIdx === 7 || valIdx === 8 || valIdx === 17
         };
 
         if (cols[valIdx].numFmt) {
@@ -359,9 +495,10 @@ export async function exportInvoicesToExcel({
     const hasData = endRow >= startRow;
 
     // 4.1. Dòng TỔNG CỘNG TOÀN BỘ PHÁT SINH (Công thức =SUM)
-    const rawTotalRow = sheet.getRow(currentRowIdx);
+    const rawTotalRowIdx = currentRowIdx;
+    const rawTotalRow = sheet.getRow(rawTotalRowIdx);
     rawTotalRow.height = 24;
-    sheet.mergeCells(`A${currentRowIdx}:I${currentRowIdx}`);
+    sheet.mergeCells(`A${rawTotalRowIdx}:I${rawTotalRowIdx}`);
     const rawLabelCell = rawTotalRow.getCell(1);
     rawLabelCell.value = 'TỔNG CỘNG TOÀN BỘ PHÁT SINH (CÔNG THỨC =SUM):';
     rawLabelCell.font = { name: 'Times New Roman', size: 10, bold: true, color: { argb: 'FF333333' } };
@@ -373,7 +510,7 @@ export async function exportInvoicesToExcel({
       fgColor: { argb: 'FFF2F4F7' }
     };
 
-    for (let c = 1; c <= 18; c++) {
+    for (let c = 1; c <= 19; c++) {
       rawTotalRow.getCell(c).fill = RAW_TOTAL_FILL;
       rawTotalRow.getCell(c).border = THIN_BORDER;
     }
@@ -408,24 +545,70 @@ export async function exportInvoicesToExcel({
 
     currentRowIdx++;
 
-    // 4.2. Dòng TỔNG CỘNG HỢP LỆ KÊ KHAI (Công thức =SUMIF loại trừ HĐ hủy ở cột R)
+    // 4.1b. Dòng TỔNG HÓA ĐƠN KHÔNG ĐỦ ĐIỀU KIỆN CẤP MÃ BỊ LOẠI TRỪ (Công thức =SUMIF theo cột R "Kết quả kiểm tra hóa đơn")
+    const rejectedTotalRowIdx = currentRowIdx;
+    const rejectedTotalRow = sheet.getRow(rejectedTotalRowIdx);
+    rejectedTotalRow.height = 24;
+    sheet.mergeCells(`A${rejectedTotalRowIdx}:I${rejectedTotalRowIdx}`);
+    const rejLabelCell = rejectedTotalRow.getCell(1);
+    rejLabelCell.value = 'TỔNG HĐ "KHÔNG ĐỦ ĐIỀU KIỆN CẤP MÃ" BỊ LOẠI TRỪ (=SUMIF CỘT KẾT QUẢ KIỂM TRA HĐ):';
+    rejLabelCell.font = { name: 'Times New Roman', size: 10, bold: true, color: { argb: 'FFFF0000' } };
+    rejLabelCell.alignment = { horizontal: 'right', vertical: 'middle' };
+
+    for (let c = 1; c <= 19; c++) {
+      rejectedTotalRow.getCell(c).fill = REJECTED_CODE_FILL;
+      rejectedTotalRow.getCell(c).border = THIN_BORDER;
+    }
+
+    const rejChuaThue = rejectedTotalRow.getCell(10);
+    rejChuaThue.value = hasData ? { formula: `SUMIF($R$${startRow}:$R$${endRow},"Hóa đơn không đủ điều kiện cấp mã",J${startRow}:J${endRow})`, result: sumChuaThueRejected } : 0;
+    rejChuaThue.numFmt = '#,##0';
+    rejChuaThue.font = REJECTED_CODE_FONT;
+
+    rejectedTotalRow.getCell(11).value = '-';
+    rejectedTotalRow.getCell(11).alignment = { horizontal: 'center', vertical: 'middle' };
+    rejectedTotalRow.getCell(11).font = REJECTED_CODE_FONT;
+
+    const rejThue = rejectedTotalRow.getCell(12);
+    rejThue.value = hasData ? { formula: `SUMIF($R$${startRow}:$R$${endRow},"Hóa đơn không đủ điều kiện cấp mã",L${startRow}:L${endRow})`, result: sumThueRejected } : 0;
+    rejThue.numFmt = '#,##0';
+    rejThue.font = REJECTED_CODE_FONT;
+
+    const rejChietKhau = rejectedTotalRow.getCell(13);
+    rejChietKhau.value = hasData ? { formula: `SUMIF($R$${startRow}:$R$${endRow},"Hóa đơn không đủ điều kiện cấp mã",M${startRow}:M${endRow})`, result: sumChietKhauRejected } : 0;
+    rejChietKhau.numFmt = '#,##0';
+    rejChietKhau.font = REJECTED_CODE_FONT;
+
+    const rejThanhToan = rejectedTotalRow.getCell(14);
+    rejThanhToan.value = hasData ? { formula: `SUMIF($R$${startRow}:$R$${endRow},"Hóa đơn không đủ điều kiện cấp mã",N${startRow}:N${endRow})`, result: sumThanhToanRejected } : 0;
+    rejThanhToan.numFmt = '#,##0';
+    rejThanhToan.font = REJECTED_CODE_FONT;
+
+    rejectedTotalRow.getCell(18).value = 'Hóa đơn không đủ điều kiện cấp mã';
+    rejectedTotalRow.getCell(18).font = REJECTED_CODE_FONT;
+    rejectedTotalRow.getCell(19).value = 'Loại trừ khỏi chi phí/thuế';
+    rejectedTotalRow.getCell(19).font = REJECTED_CODE_FONT;
+
+    currentRowIdx++;
+
+    // 4.2. Dòng TỔNG CỘNG HỢP LỆ KÊ KHAI (Công thức =SUMIFS kiểm tra cột R = "Đã cấp mã hóa đơn" và cột S = "Hợp lệ")
     const validTotalRowIdx = currentRowIdx;
     const validTotalRow = sheet.getRow(validTotalRowIdx);
     validTotalRow.height = 26;
 
     sheet.mergeCells(`A${validTotalRowIdx}:I${validTotalRowIdx}`);
     const totalLabelCell = validTotalRow.getCell(1);
-    totalLabelCell.value = 'TỔNG CỘNG HỢP LỆ KÊ KHAI (CÔNG THỨC =SUMIF LOẠI TRỪ HÓA ĐƠN HỦY):';
+    totalLabelCell.value = 'TỔNG CỘNG HỢP LỆ KÊ KHAI (=SUMIFS LỌC "ĐÃ CẤP MÃ HÓA ĐƠN" & LOẠI TRỪ HĐ HỦY):';
     totalLabelCell.font = { name: 'Times New Roman', size: 11, bold: true, color: { argb: 'FF1F4E79' } };
     totalLabelCell.alignment = { horizontal: 'right', vertical: 'middle' };
 
-    for (let c = 1; c <= 18; c++) {
+    for (let c = 1; c <= 19; c++) {
       validTotalRow.getCell(c).fill = TOTAL_FILL;
       validTotalRow.getCell(c).border = THIN_BORDER;
     }
 
     const cellChuaThue = validTotalRow.getCell(10);
-    cellChuaThue.value = hasData ? { formula: `SUMIF($R$${startRow}:$R$${endRow},"Hợp lệ",J${startRow}:J${endRow})`, result: sumChuaThueHopLe } : 0;
+    cellChuaThue.value = hasData ? { formula: `SUMIFS(J${startRow}:J${endRow},$R$${startRow}:$R$${endRow},"Đã cấp mã hóa đơn",$S$${startRow}:$S$${endRow},"Hợp lệ")`, result: sumChuaThueHopLe } : 0;
     cellChuaThue.numFmt = '#,##0';
     cellChuaThue.font = { name: 'Times New Roman', size: 11, bold: true };
 
@@ -434,19 +617,24 @@ export async function exportInvoicesToExcel({
     validTotalRow.getCell(11).font = { name: 'Times New Roman', size: 10, bold: true };
 
     const cellThue = validTotalRow.getCell(12);
-    cellThue.value = hasData ? { formula: `SUMIF($R$${startRow}:$R$${endRow},"Hợp lệ",L${startRow}:L${endRow})`, result: sumThueHopLe } : 0;
+    cellThue.value = hasData ? { formula: `SUMIFS(L${startRow}:L${endRow},$R$${startRow}:$R$${endRow},"Đã cấp mã hóa đơn",$S$${startRow}:$S$${endRow},"Hợp lệ")`, result: sumThueHopLe } : 0;
     cellThue.numFmt = '#,##0';
     cellThue.font = { name: 'Times New Roman', size: 11, bold: true };
 
     const cellChietKhau = validTotalRow.getCell(13);
-    cellChietKhau.value = hasData ? { formula: `SUMIF($R$${startRow}:$R$${endRow},"Hợp lệ",M${startRow}:M${endRow})`, result: sumChietKhauHopLe } : 0;
+    cellChietKhau.value = hasData ? { formula: `SUMIFS(M${startRow}:M${endRow},$R$${startRow}:$R$${endRow},"Đã cấp mã hóa đơn",$S$${startRow}:$S$${endRow},"Hợp lệ")`, result: sumChietKhauHopLe } : 0;
     cellChietKhau.numFmt = '#,##0';
     cellChietKhau.font = { name: 'Times New Roman', size: 11, bold: true };
 
     const cellThanhToan = validTotalRow.getCell(14);
-    cellThanhToan.value = hasData ? { formula: `SUMIF($R$${startRow}:$R$${endRow},"Hợp lệ",N${startRow}:N${endRow})`, result: sumThanhToanHopLe } : 0;
+    cellThanhToan.value = hasData ? { formula: `SUMIFS(N${startRow}:N${endRow},$R$${startRow}:$R$${endRow},"Đã cấp mã hóa đơn",$S$${startRow}:$S$${endRow},"Hợp lệ")`, result: sumThanhToanHopLe } : 0;
     cellThanhToan.numFmt = '#,##0';
     cellThanhToan.font = { name: 'Times New Roman', size: 11, bold: true, color: { argb: 'FFC00000' } };
+
+    validTotalRow.getCell(18).value = 'Đã cấp mã hóa đơn';
+    validTotalRow.getCell(18).font = { name: 'Times New Roman', size: 10, bold: true, color: { argb: 'FF276A3C' } };
+    validTotalRow.getCell(19).value = 'Hợp lệ';
+    validTotalRow.getCell(19).font = { name: 'Times New Roman', size: 10, bold: true, color: { argb: 'FF276A3C' } };
 
     // 4.3. BẢNG PHÂN LOẠI TỔNG HỢP THEO MỨC THUẾ SUẤT (0%, 5%, 8%, 10%) BẰNG CÔNG THỨC =SUMIFS
     currentRowIdx += 2;
@@ -482,7 +670,7 @@ export async function exportInvoicesToExcel({
 
       const cChuaThue = rRow.getCell(10);
       cChuaThue.value = hasData
-        ? { formula: `SUMIFS(J${startRow}:J${endRow},$R$${startRow}:$R$${endRow},"Hợp lệ",$K$${startRow}:$K$${endRow},"${rateKey}")`, result: rStat.chuaThue }
+        ? { formula: `SUMIFS(J${startRow}:J${endRow},$R$${startRow}:$R$${endRow},"Đã cấp mã hóa đơn",$S$${startRow}:$S$${endRow},"Hợp lệ",$K$${startRow}:$K$${endRow},"${rateKey}")`, result: rStat.chuaThue }
         : 0;
       cChuaThue.numFmt = '#,##0';
       cChuaThue.font = { name: 'Times New Roman', size: 10, bold: true, color: { argb: rStat.textArgb } };
@@ -494,7 +682,7 @@ export async function exportInvoicesToExcel({
 
       const cThue = rRow.getCell(12);
       cThue.value = hasData
-        ? { formula: `SUMIFS(L${startRow}:L${endRow},$R$${startRow}:$R$${endRow},"Hợp lệ",$K$${startRow}:$K$${endRow},"${rateKey}")`, result: rStat.thue }
+        ? { formula: `SUMIFS(L${startRow}:L${endRow},$R$${startRow}:$R$${endRow},"Đã cấp mã hóa đơn",$S$${startRow}:$S$${endRow},"Hợp lệ",$K$${startRow}:$K$${endRow},"${rateKey}")`, result: rStat.thue }
         : 0;
       cThue.numFmt = '#,##0';
       cThue.font = { name: 'Times New Roman', size: 10, bold: true, color: { argb: rStat.textArgb } };
@@ -505,7 +693,7 @@ export async function exportInvoicesToExcel({
 
       const cThanhToan = rRow.getCell(14);
       cThanhToan.value = hasData
-        ? { formula: `SUMIFS(N${startRow}:N${endRow},$R$${startRow}:$R$${endRow},"Hợp lệ",$K$${startRow}:$K$${endRow},"${rateKey}")`, result: rStat.thanhToan }
+        ? { formula: `SUMIFS(N${startRow}:N${endRow},$R$${startRow}:$R$${endRow},"Đã cấp mã hóa đơn",$S$${startRow}:$S$${endRow},"Hợp lệ",$K$${startRow}:$K$${endRow},"${rateKey}")`, result: rStat.thanhToan }
         : 0;
       cThanhToan.numFmt = '#,##0';
       cThanhToan.font = { name: 'Times New Roman', size: 10, bold: true, color: { argb: rStat.textArgb } };
@@ -516,7 +704,8 @@ export async function exportInvoicesToExcel({
     return {
       startRow,
       endRow,
-      rawTotalRowIdx: validTotalRowIdx - 1,
+      rawTotalRowIdx,
+      rejectedTotalRowIdx,
       validTotalRowIdx,
       sumChuaThueRaw,
       sumThueRaw,
@@ -620,7 +809,7 @@ export async function exportInvoicesToExcel({
     row8.getCell(3).value = 'Sheet Mua_Vao';
     row8.getCell(4).value = { formula: `'Mua_Vao'!J${purchaseMeta.validTotalRowIdx}`, result: purchaseMeta.sumChuaThueHopLe };
     row8.getCell(5).value = { formula: `'Mua_Vao'!L${purchaseMeta.validTotalRowIdx}`, result: purchaseMeta.sumThueHopLe };
-    row8.getCell(6).value = 'Đã loại trừ hóa đơn hủy/thay thế';
+    row8.getCell(6).value = 'Đã loại trừ HĐ hủy/thay thế & HĐ không đủ điều kiện cấp mã';
 
     const netTax = soldMeta.sumThueHopLe - purchaseMeta.sumThueHopLe;
     const isPayable = netTax > 0;
@@ -669,11 +858,7 @@ export async function exportInvoicesToExcel({
     }
 
     // PHẦN II: DANH SÁCH HÓA ĐƠN MUA VÀO TỪ 5 TRIỆU ĐỒNG (BẮT BUỘC CHUYỂN KHOẢN NGÂN HÀNG)
-    const validPurchaseList = purchaseInvoices.filter(i =>
-      i.is_valid_for_tax !== false &&
-      i.trang_thai_hoa_don !== '4' &&
-      i.trang_thai_hoa_don !== '6'
-    );
+    const validPurchaseList = purchaseInvoices.filter(i => evaluateInvoiceValidity(i).isValid);
 
     const bankInvoices = validPurchaseList
       .filter(i => (Number(i.tong_tien_thanh_toan) || 0) >= 5000000)

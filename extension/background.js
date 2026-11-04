@@ -331,7 +331,64 @@ function getFieldValue(obj, fieldPath) {
 }
 
 /**
- * Ánh xạ dữ liệu thô sang cấu trúc hóa đơn chuẩn (kèm chuẩn hóa ngày giờ Việt Nam)
+ * Chuẩn hóa cột "Kết quả kiểm tra hóa đơn" (ttxly / ket_qua_kiem_tra)
+ * - Bình thường: "Đã cấp mã hóa đơn" (ttxly: 5, 6, 8, 0, 1, 7)
+ * - Bất thường: "Hóa đơn không đủ điều kiện cấp mã" (ttxly: 2, 3, 4) -> Loại trừ khỏi chi phí/thuế hợp lệ
+ */
+function resolveCheckResult(rawVal, rawItem) {
+  const val = rawVal !== undefined && rawVal !== '' ? rawVal : (rawItem?.ttxly ?? rawItem?.kqcht ?? '');
+  const str = String(val).trim();
+  const lower = str.toLowerCase();
+
+  const isRejected =
+    str === '2' ||
+    str === '3' ||
+    str === '4' ||
+    lower.includes('không đủ điều kiện') ||
+    lower.includes('khong du dieu kien') ||
+    lower.includes('từ chối cấp mã') ||
+    lower.includes('cqt từ chối');
+
+  if (isRejected) {
+    return {
+      isRejectedCode: true,
+      label: 'Hóa đơn không đủ điều kiện cấp mã',
+      rawCode: str || '4'
+    };
+  }
+
+  return {
+    isRejectedCode: false,
+    label: 'Đã cấp mã hóa đơn',
+    rawCode: str || '5'
+  };
+}
+
+/**
+ * Kiểm tra hóa đơn có thuộc đúng MST đang tra cứu hay không (Chống rò rỉ cache từ MST trước)
+ */
+function isInvoiceOwnedByTargetMst(mapped, targetMst) {
+  if (!targetMst) return true;
+  const cleanTarget = String(targetMst).replace(/[^0-9]/g, '');
+  if (!cleanTarget || cleanTarget.length < 10) return true;
+  const baseTarget10 = cleanTarget.substring(0, 10);
+
+  if (mapped.stream_type === 'MUA_VAO') {
+    const buyerMst = String(mapped.mst_nguoi_mua || '').replace(/[^0-9]/g, '');
+    if (buyerMst.length >= 10 && !buyerMst.startsWith(baseTarget10)) {
+      return false;
+    }
+  } else if (mapped.stream_type === 'BAN_RA') {
+    const sellerMst = String(mapped.mst_nguoi_ban || '').replace(/[^0-9]/g, '');
+    if (sellerMst.length >= 10 && !sellerMst.startsWith(baseTarget10)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Ánh xạ dữ liệu thô sang cấu trúc hóa đơn chuẩn (kèm chuẩn hóa ngày giờ Việt Nam & Kết quả kiểm tra HĐ)
  */
 function mapInvoiceItem(rawItem, fieldMapping, stream, statusDict) {
   const get = (key) => {
@@ -343,9 +400,13 @@ function mapInvoiceItem(rawItem, fieldMapping, stream, statusDict) {
   const statusStr = statusRaw !== undefined ? String(statusRaw) : '1';
   const statusLabel = statusDict[statusStr] || `Trạng thái (${statusStr})`;
 
+  const checkInfo = resolveCheckResult(get('ket_qua_kiem_tra'), rawItem);
+
   // Chuẩn hóa ngày lập sang múi giờ Việt Nam
   const rawNgay = get('ngay_lap') || rawItem.tdlap || rawItem.nlap || '';
   const parsedDate = parseAndNormalizeVNDate(rawNgay);
+
+  const isValidForTax = statusStr !== '4' && statusStr !== '6' && !checkInfo.isRejectedCode;
 
   return {
     id: get('id') || rawItem.id || `${rawItem.khmshdon}_${rawItem.khhdon}_${rawItem.shdon}`,
@@ -370,8 +431,9 @@ function mapInvoiceItem(rawItem, fieldMapping, stream, statusDict) {
     ty_gia: Number(get('ty_gia')) || 1,
     trang_thai_hoa_don: statusStr,
     trang_thai_nhan: statusLabel,
-    ket_qua_kiem_tra: get('ket_qua_kiem_tra') || '',
-    is_valid_for_tax: statusStr !== '4' && statusStr !== '6',
+    ket_qua_kiem_tra: checkInfo.label,
+    is_rejected_code: checkInfo.isRejectedCode,
+    is_valid_for_tax: isValidForTax,
     raw_data: rawItem
   };
 }
@@ -421,12 +483,13 @@ async function getFreshCaptchaForPos(apiRunner) {
 }
 
 /**
- * Thực hiện Luồng 2: Quét vét cạn hóa đơn không bỏ sót (Zero-Miss Fetching)
+ * Thực hiện Luồng 2: Quét vét cạn hóa đơn không bỏ sót (Zero-Miss Fetching + Smart Multi-Retry khi mạng yếu + Chống dính Cache MST)
  */
 async function fetchAllInvoices(apiRunner, config, dateChunks, ckey = '', cvalue = '', options = {}) {
   const purchaseMap = new Map();
   const soldMap = new Map();
   let outOfPeriodCount = 0;
+  let crossMstFilteredCount = 0;
 
   let streams = config.endpoints.streams || [];
   // Mặc định luôn quét cả HĐ Điện tử và HĐ Máy tính tiền để KHÔNG BỎ SÓT chi phí mua vào
@@ -434,8 +497,9 @@ async function fetchAllInvoices(apiRunner, config, dateChunks, ckey = '', cvalue
     streams = streams.filter(s => !s.id.includes('pos'));
   }
 
-  const delayMs = config.request_settings?.delay_between_requests_ms || 350;
+  let baseDelayMs = config.request_settings?.delay_between_requests_ms || 400;
   const pageSize = config.request_settings?.page_size || 50;
+  const targetMst = options?.target_mst || '';
 
   const totalSteps = dateChunks.length * streams.length;
   let currentStep = 0;
@@ -460,7 +524,8 @@ async function fetchAllInvoices(apiRunner, config, dateChunks, ckey = '', cvalue
           step: `Đang giải mã ký tự bảo vệ cho HĐ Máy tính tiền (${chunk.label})...`,
           percent: Math.min(95, Math.round(12 + (currentStep / totalSteps) * 80)),
           purchase_count: purchaseMap.size,
-          sold_count: soldMap.size
+          sold_count: soldMap.size,
+          ping_ms: apiRunner.lastPingMs || 0
         });
 
         const fresh = await getFreshCaptchaForPos(apiRunner);
@@ -482,19 +547,24 @@ async function fetchAllInvoices(apiRunner, config, dateChunks, ckey = '', cvalue
         step: `[${currentStep}/${totalSteps}] Đang quét ${chunk.label} (${stream.source_label} ${stream.type === 'MUA_VAO' ? 'Mua vào' : 'Bán ra'})...`,
         percent: percent,
         purchase_count: purchaseMap.size,
-        sold_count: soldMap.size
+        sold_count: soldMap.size,
+        ping_ms: apiRunner.lastPingMs || 0
       });
 
-      let queryStr = stream.query_template
+      const buildStreamQuery = (ck, cv) => stream.query_template
         .replace('{{size}}', pageSize)
         .replace('{{from_date}}', chunk.from_date)
         .replace('{{to_date}}', chunk.to_date)
-        .replace('{{ckey}}', encodeURIComponent(activeCkey || ''))
-        .replace('{{cvalue}}', encodeURIComponent(activeCvalue || ''));
+        .replace('{{ckey}}', encodeURIComponent(ck || ''))
+        .replace('{{cvalue}}', encodeURIComponent(cv || ''));
+
+      let queryStr = buildStreamQuery(activeCkey, activeCvalue);
 
       let nextState = null;
       let streamFinished = false;
       let fetchedInStream = 0;
+      let expectedTotalInStream = 0;
+      let recoveryPassDone = false;
 
       while (!streamFinished) {
         let fullPath = `${stream.path}?${queryStr}`;
@@ -502,98 +572,130 @@ async function fetchAllInvoices(apiRunner, config, dateChunks, ckey = '', cvalue
           fullPath += `&${config.pagination.next_page_query_param || 'state'}=${encodeURIComponent(nextState)}`;
         }
 
-        await rateLimiter.wait(delayMs);
+        // Điều chỉnh nhịp nghỉ thông minh theo Ping thực tế tới Cổng Thuế
+        const adaptiveDelay = apiRunner.lastPingMs > 700 ? Math.max(baseDelayMs, 750) : baseDelayMs;
+        await rateLimiter.wait(adaptiveDelay);
 
-        try {
-          const res = await apiRunner.requestTax(fullPath, { method: 'GET' });
+        let pageSuccess = false;
+        let maxPageAttempts = isPosStream ? 3 : 4;
 
-          const items = res[config.pagination.items_array_path || 'datas'] || [];
-          const totalCount = res[config.pagination.total_count_path || 'total'] || 0;
-          nextState = res[config.pagination.next_page_token_path || 'state'];
+        for (let attempt = 1; attempt <= maxPageAttempts; attempt++) {
+          try {
+            const res = await apiRunner.requestTax(fullPath, { method: 'GET' });
 
-          console.log(`[Stream ${stream.id} - ${chunk.label}] Fetched ${items.length} items (Total: ${totalCount})`);
-
-          if (items.length > 0) {
-            if (SchemaInterceptor.detectDrift(items[0], config.field_mapping)) {
-              console.warn('[SchemaDrift] Detected possible schema drift! Triggering AI Auto-Heal...');
-              try {
-                const sanitizedSample = SchemaInterceptor.sanitizeSample(items[0]);
-                const healResult = await apiRunner.healSchema(sanitizedSample, config.field_mapping);
-                if (healResult.updated_mapping) {
-                  config.field_mapping = healResult.updated_mapping;
-                }
-              } catch (healErr) {
-                console.error('[SchemaDrift] Auto-heal failed:', healErr.message);
-              }
+            const items = res[config.pagination.items_array_path || 'datas'] || [];
+            const totalCount = Number(res[config.pagination.total_count_path || 'total']) || 0;
+            if (totalCount > expectedTotalInStream) {
+              expectedTotalInStream = totalCount;
             }
+            nextState = res[config.pagination.next_page_token_path || 'state'];
 
-            for (const rawItem of items) {
-              const mapped = mapInvoiceItem(rawItem, config.field_mapping, stream, config.status_dictionary);
+            console.log(`[Stream ${stream.id} - ${chunk.label}] Fetched ${items.length} items (Total: ${totalCount}, Ping: ${apiRunner.lastPingMs}ms)`);
 
-              // Bộ lọc thông minh: Nếu ngày lập nằm ngoài kỳ được chọn (ví dụ 30/09 trong Quý 4)
-              if (options && options.strict_period && !isInvoiceInRequestedPeriod(mapped, options)) {
-                console.warn(`[SmartDateFilter] Loại trừ HĐ ngoài kỳ: Số ${mapped.so_hoa_don}, Ngày ${mapped.ngay_lap}`);
-                outOfPeriodCount++;
-                continue;
-              }
-
-              if (stream.type === 'MUA_VAO') {
-                purchaseMap.set(mapped.id, mapped);
-              } else {
-                soldMap.set(mapped.id, mapped);
-              }
-            }
-
-            fetchedInStream += items.length;
-          }
-
-          if (!nextState || items.length === 0 || (totalCount > 0 && fetchedInStream >= totalCount)) {
-            streamFinished = true;
-          }
-        } catch (fetchErr) {
-          // Nếu gặp lỗi Captcha hoặc Timeout ở luồng Máy tính tiền, tự động thử lại 1 lần với Captcha mới
-          if (isPosStream && (fetchErr.message?.includes('captcha') || fetchErr.message?.includes('504'))) {
-            console.log(`[PosStream] Thử lại với Captcha mới cho ${stream.id}...`);
-            const retryFresh = await getFreshCaptchaForPos(apiRunner);
-            if (retryFresh) {
-              const retryQuery = stream.query_template
-                .replace('{{size}}', pageSize)
-                .replace('{{from_date}}', chunk.from_date)
-                .replace('{{to_date}}', chunk.to_date)
-                .replace('{{ckey}}', encodeURIComponent(retryFresh.ckey))
-                .replace('{{cvalue}}', encodeURIComponent(retryFresh.cvalue));
-              const retryPath = nextState 
-                ? `${stream.path}?${retryQuery}&${config.pagination.next_page_query_param || 'state'}=${encodeURIComponent(nextState)}`
-                : `${stream.path}?${retryQuery}`;
-              try {
-                const retryRes = await apiRunner.requestTax(retryPath, { method: 'GET' });
-                const rItems = retryRes[config.pagination.items_array_path || 'datas'] || [];
-                const rTotal = retryRes[config.pagination.total_count_path || 'total'] || 0;
-                nextState = retryRes[config.pagination.next_page_token_path || 'state'];
-                for (const rawItem of rItems) {
-                  const mapped = mapInvoiceItem(rawItem, config.field_mapping, stream, config.status_dictionary);
-                  if (options && options.strict_period && !isInvoiceInRequestedPeriod(mapped, options)) {
-                    outOfPeriodCount++;
-                    continue;
+            if (items.length > 0) {
+              if (SchemaInterceptor.detectDrift(items[0], config.field_mapping)) {
+                console.warn('[SchemaDrift] Detected possible schema drift! Triggering AI Auto-Heal...');
+                try {
+                  const sanitizedSample = SchemaInterceptor.sanitizeSample(items[0]);
+                  const healResult = await apiRunner.healSchema(sanitizedSample, config.field_mapping);
+                  if (healResult.updated_mapping) {
+                    config.field_mapping = healResult.updated_mapping;
                   }
-                  if (stream.type === 'MUA_VAO') purchaseMap.set(mapped.id, mapped);
-                  else soldMap.set(mapped.id, mapped);
+                } catch (healErr) {
+                  console.error('[SchemaDrift] Auto-heal failed:', healErr.message);
                 }
-                fetchedInStream += rItems.length;
-                if (!nextState || rItems.length === 0 || (rTotal > 0 && fetchedInStream >= rTotal)) {
-                  streamFinished = true;
+              }
+
+              for (const rawItem of items) {
+                const mapped = mapInvoiceItem(rawItem, config.field_mapping, stream, config.status_dictionary);
+
+                // Chống rò rỉ dữ liệu từ MST trước (nếu Cổng Thuế trả nhầm cache)
+                if (!isInvoiceOwnedByTargetMst(mapped, targetMst)) {
+                  console.warn(`[MstIsolation] Loại bỏ hóa đơn khác MST (${mapped.so_hoa_don})`);
+                  crossMstFilteredCount++;
+                  continue;
                 }
-                continue;
-              } catch (e2) {
-                console.warn(`[PosStream] Thử lại POS không thành công: ${e2.message}`);
+
+                // Bộ lọc thông minh: Nếu ngày lập nằm ngoài kỳ được chọn (ví dụ 30/09 trong Quý 4)
+                if (options && options.strict_period && !isInvoiceInRequestedPeriod(mapped, options)) {
+                  console.warn(`[SmartDateFilter] Loại trừ HĐ ngoài kỳ: Số ${mapped.so_hoa_don}, Ngày ${mapped.ngay_lap}`);
+                  outOfPeriodCount++;
+                  continue;
+                }
+
+                if (stream.type === 'MUA_VAO') {
+                  purchaseMap.set(mapped.id, mapped);
+                } else {
+                  soldMap.set(mapped.id, mapped);
+                }
+              }
+
+              fetchedInStream += items.length;
+            }
+
+            pageSuccess = true;
+
+            if (!nextState || items.length === 0 || (expectedTotalInStream > 0 && fetchedInStream >= expectedTotalInStream)) {
+              // Đối soát quân số hóa đơn: Nếu Cổng Thuế báo có nhiều hơn số thực nhận và chưa chạy vét bù -> quét bù 1 lượt
+              if (expectedTotalInStream > 0 && fetchedInStream < expectedTotalInStream && !recoveryPassDone) {
+                console.warn(`[SmartVerify] Phát hiện thiếu ${expectedTotalInStream - fetchedInStream} HĐ ở ${chunk.label} (${stream.id}). Tự động quét bù...`);
+                recoveryPassDone = true;
+                nextState = null;
+                fetchedInStream = 0;
+                broadcastProgress({
+                  stage: 'FETCHING',
+                  month_label: chunk.label,
+                  stream_label: `${stream.type === 'MUA_VAO' ? 'Mua vào' : 'Bán ra'} - ${stream.source_label}`,
+                  step: `🛡️ Đang đối soát & quét bù dữ liệu ${chunk.label} để đảm bảo không sót hóa đơn...`,
+                  percent: percent,
+                  purchase_count: purchaseMap.size,
+                  sold_count: soldMap.size,
+                  ping_ms: apiRunner.lastPingMs || 0
+                });
+                await rateLimiter.wait(900);
+              } else {
+                streamFinished = true;
               }
             }
-          }
+            break; // Thoát vòng lặp retry của trang hiện tại
+          } catch (fetchErr) {
+            console.warn(`[StreamAttempt ${attempt}/${maxPageAttempts}] Lỗi tại ${stream.id} (${chunk.label}):`, fetchErr.message);
 
+            if (attempt < maxPageAttempts) {
+              const backoffMs = attempt * 1300;
+              broadcastProgress({
+                stage: 'FETCHING',
+                month_label: chunk.label,
+                stream_label: `${stream.type === 'MUA_VAO' ? 'Mua vào' : 'Bán ra'} - ${stream.source_label}`,
+                step: `📡 Tín hiệu Cổng Thuế phản hồi chậm (${apiRunner.lastPingMs || 900}ms) — Đang tự động thử lại lần ${attempt}/${maxPageAttempts - 1} để chống thiếu dữ liệu (${chunk.label})...`,
+                percent: percent,
+                purchase_count: purchaseMap.size,
+                sold_count: soldMap.size,
+                ping_ms: apiRunner.lastPingMs || 900
+              });
+
+              if (isPosStream) {
+                const retryFresh = await getFreshCaptchaForPos(apiRunner);
+                if (retryFresh) {
+                  activeCkey = retryFresh.ckey;
+                  activeCvalue = retryFresh.cvalue;
+                  queryStr = buildStreamQuery(activeCkey, activeCvalue);
+                  fullPath = nextState
+                    ? `${stream.path}?${queryStr}&${config.pagination.next_page_query_param || 'state'}=${encodeURIComponent(nextState)}`
+                    : `${stream.path}?${queryStr}`;
+                }
+              }
+
+              await rateLimiter.wait(backoffMs);
+            }
+          }
+        }
+
+        if (!pageSuccess) {
           if (isPosStream) {
-            console.warn(`[Info] Doanh nghiệp không đăng ký hoặc Cổng thuế POS phản hồi chậm (${stream.source_label}): ${fetchErr.message}. Tự động bỏ qua an toàn.`);
+            console.warn(`[Info] Doanh nghiệp không đăng ký hoặc Cổng thuế POS phản hồi chậm (${stream.source_label}). Tự động bỏ qua an toàn.`);
           } else {
-            console.error(`[Fetch Stream Error] ${fullPath}:`, fetchErr.message);
+            console.error(`[Fetch Stream Error] Đã thử tối đa ${maxPageAttempts} lần nhưng không thành công: ${fullPath}`);
           }
           streamFinished = true;
         }
@@ -619,7 +721,8 @@ async function fetchAllInvoices(apiRunner, config, dateChunks, ckey = '', cvalue
   return {
     purchase: purchaseList,
     sold: soldList,
-    out_of_period_count: outOfPeriodCount
+    out_of_period_count: outOfPeriodCount,
+    cross_mst_filtered_count: crossMstFilteredCount
   };
 }
 
@@ -644,7 +747,16 @@ async function handleSyncRequest(payload) {
   } = payload;
 
   const periodDesc = month ? `Tháng ${month}/${year}` : (quarter ? `Quý ${quarter}/${year}` : `${from_date} đến ${to_date}`);
-  console.log(`[SyncJob] Starting sync for MST: ${username}, Period: ${periodDesc}`);
+  console.log(`[SyncJob] Starting clean sync for MST: ${username}, Period: ${periodDesc}`);
+
+  // Bước 0: Xóa sạch Cache phiên trước để đảm bảo độc lập 100% giữa các MST
+  broadcastProgress({
+    stage: 'FLUSHING_CACHE',
+    step: `🧹 Đang dọn sạch bộ nhớ đệm phiên trước và khởi tạo kênh kết nối độc lập cho MST ${username}...`,
+    percent: 2,
+    purchase_count: 0,
+    sold_count: 0
+  });
 
   // Kiểm tra giới hạn 2 MST miễn phí & đồng bộ Bản Quyền theo cả Máy tính (local) VÀ Tài khoản Gmail Chrome (sync)
   if (typeof chrome !== 'undefined' && chrome.storage) {
@@ -688,19 +800,20 @@ async function handleSyncRequest(payload) {
     }
   }
 
-  // 1. Khởi tạo ApiRunner và tải cấu hình động
+  // 1. Khởi tạo ApiRunner mới hoàn toàn (Zero-State) và tải cấu hình động
   const tempRunner = new ApiRunner('https://hoadondientu.gdt.gov.vn/api', backend_url, license_key);
   
   broadcastProgress({
     stage: 'INIT',
-    step: 'Đang kết nối Cổng Thuế Điện Tử (hoadondientu.gdt.gov.vn)...',
-    percent: 2
+    step: `Đang kết nối Cổng Thuế Điện Tử (hoadondientu.gdt.gov.vn) cho MST ${username}...`,
+    percent: 4
   });
 
   const dynamicConfig = await tempRunner.fetchConfig();
   const apiRunner = new ApiRunner(dynamicConfig.base_url, backend_url, license_key);
+  apiRunner.clearSession();
 
-  // 2. Xác thực & Đăng nhập lấy JWT
+  // 2. Xác thực & Đăng nhập lấy JWT mới riêng biệt cho MST hiện tại
   const authData = await authenticateUser(apiRunner, dynamicConfig, username, password, manual_captcha, manual_ckey);
 
   // 3. Chuẩn bị các Date Chunks (hỗ trợ theo Tháng, theo Quý hoặc tùy chọn ngày)
@@ -719,7 +832,7 @@ async function handleSyncRequest(payload) {
     throw new Error('Vui lòng chọn Tháng, Quý/Năm hoặc khoảng ngày tra cứu.');
   }
 
-  // 4. Quét hóa đơn không bỏ sót (kèm bộ lọc thông minh chuẩn hóa ngày giờ VN)
+  // 4. Quét hóa đơn không bỏ sót (kèm bộ lọc thông minh chuẩn hóa ngày giờ VN & kiểm tra độc lập MST)
   const result = await fetchAllInvoices(
     apiRunner,
     dynamicConfig,
@@ -729,6 +842,7 @@ async function handleSyncRequest(payload) {
     {
       strict_period,
       include_pos,
+      target_mst: username,
       target_year: year,
       target_quarter: quarter,
       target_month: month,
@@ -737,10 +851,13 @@ async function handleSyncRequest(payload) {
     }
   );
 
-  // 5. Tính toán tóm tắt
+  // 5. Tính toán tóm tắt (Đã loại trừ cả HĐ hủy/thay thế VÀ "Hóa đơn không đủ điều kiện cấp mã")
   const sumValid = (list, field) => list
     .filter(item => item.is_valid_for_tax)
     .reduce((acc, curr) => acc + (Number(curr[field]) || 0), 0);
+
+  const rejectedCodePurchaseCount = result.purchase.filter(i => i.is_rejected_code).length;
+  const rejectedCodeSoldCount = result.sold.filter(i => i.is_rejected_code).length;
 
   const summary = {
     mst: username,
@@ -751,18 +868,23 @@ async function handleSyncRequest(payload) {
     count_purchase: result.purchase.length,
     count_sold: result.sold.length,
     out_of_period_count: result.out_of_period_count || 0,
+    rejected_code_count: rejectedCodePurchaseCount + rejectedCodeSoldCount,
     valid_count_purchase: result.purchase.filter(i => i.is_valid_for_tax).length,
     valid_count_sold: result.sold.filter(i => i.is_valid_for_tax).length,
     total_amount_purchase: sumValid(result.purchase, 'tong_tien_thanh_toan'),
     total_amount_sold: sumValid(result.sold, 'tong_tien_thanh_toan'),
     total_tax_purchase: sumValid(result.purchase, 'tong_tien_thue'),
     total_tax_sold: sumValid(result.sold, 'tong_tien_thue'),
+    last_ping_ms: apiRunner.lastPingMs || 0,
     synced_at: new Date().toISOString()
   };
 
   let completionMessage = `Đã hoàn tất! Thu thập ${result.purchase.length} HĐ Mua vào và ${result.sold.length} HĐ Bán ra (${periodDesc}).`;
   if (result.out_of_period_count > 0) {
     completionMessage += ` (Đã tự động loại bỏ ${result.out_of_period_count} tờ sai kỳ do lệch giờ Cục thuế).`;
+  }
+  if (summary.rejected_code_count > 0) {
+    completionMessage += ` (Phát hiện & loại trừ ${summary.rejected_code_count} HĐ không đủ điều kiện cấp mã).`;
   }
 
   broadcastProgress({
@@ -811,9 +933,34 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === 'GET_CAPTCHA') {
     const runner = new ApiRunner('https://hoadondientu.gdt.gov.vn/api');
     runner.requestTax('/captcha', { method: 'GET' })
-      .then(res => sendResponse({ success: true, data: res }))
-      .catch(err => sendResponse({ success: false, error: err.message }));
+      .then(res => sendResponse({ success: true, data: res, ping_ms: runner.lastPingMs }))
+      .catch(err => sendResponse({ success: false, error: err.message, ping_ms: runner.lastPingMs }));
     return true;
+  }
+
+  if (request.type === 'PING_TAX_SERVER') {
+    const runner = new ApiRunner('https://hoadondientu.gdt.gov.vn/api');
+    const startMs = Date.now();
+    runner.requestTax('/captcha', { method: 'GET', timeoutMs: 10000 })
+      .then(() => {
+        const pingMs = Math.max(1, Date.now() - startMs);
+        sendResponse({ success: true, ping_ms: pingMs, status: 'online' });
+      })
+      .catch((err) => {
+        const pingMs = Math.max(1, Date.now() - startMs);
+        sendResponse({ success: false, ping_ms: pingMs, status: 'slow_or_offline', error: err.message });
+      });
+    return true;
+  }
+
+  if (request.type === 'CLEAR_TAX_CACHE') {
+    rateLimiter.lastRequestTime = 0;
+    sendResponse({
+      success: true,
+      cleared_at: Date.now(),
+      message: 'Đã giải phóng toàn bộ Cache & Session Cổng Thuế.'
+    });
+    return false;
   }
 
   if (request.type === 'UPDATE_MST') {
@@ -834,7 +981,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.type === 'PING') {
-    sendResponse({ success: true, version: '1.0.1', status: 'ready' });
+    sendResponse({ success: true, version: '1.0.2', status: 'ready' });
     return false;
   }
 });

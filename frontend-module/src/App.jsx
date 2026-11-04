@@ -75,12 +75,23 @@ export default function App() {
   }, []);
 
   const handleSelectAccount = (acc) => {
+    const prevMst = activeAccount?.mst;
     setActiveAccount(acc);
-    // Nếu chuyển sang công ty khác thì dọn sạch dữ liệu xem trước của công ty trước
-    if (activeAccount && acc && activeAccount.mst !== acc.mst) {
+    // Nếu chuyển sang công ty khác thì dọn sạch dữ liệu xem trước và xóa Cache phiên của công ty trước
+    if (prevMst && acc && prevMst !== acc.mst) {
       setInvoiceData(null);
       setSyncMeta(null);
+      window.postMessage({
+        type: 'TAX_EXTENSION_CLEAR_CACHE',
+        requestId: 'clear_' + Date.now(),
+        payload: { prevMst, nextMst: acc.mst }
+      }, '*');
     }
+  };
+
+  const handleClearPreviousResults = () => {
+    setInvoiceData(null);
+    setSyncMeta(null);
   };
 
   const handleSyncCompleted = (data, meta) => {
@@ -215,6 +226,7 @@ export default function App() {
         <SyncControlPanel
           activeAccount={activeAccount}
           onSyncCompleted={handleSyncCompleted}
+          onClearPreviousResults={handleClearPreviousResults}
           isSyncing={isSyncing}
           setIsSyncing={setIsSyncing}
         />

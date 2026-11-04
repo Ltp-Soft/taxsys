@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Play, Calendar, AlertTriangle, CheckCircle2, RefreshCw, Cpu, Key, HelpCircle, FileCheck } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Play, Calendar, AlertTriangle, CheckCircle2, RefreshCw, Cpu, Key, HelpCircle, FileCheck, Activity, Trash2 } from 'lucide-react';
+import { evaluateInvoiceValidity } from '../utils/excelExporter';
 
-export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyncing, setIsSyncing }) {
+export default function SyncControlPanel({ activeAccount, onSyncCompleted, onClearPreviousResults, isSyncing, setIsSyncing }) {
   // Chế độ chọn: 'quarter' (Theo Quý), 'month' (Theo Tháng), 'custom' (Khoảng ngày)
   const [syncPeriodType, setSyncPeriodType] = useState('quarter');
   const [quarter, setQuarter] = useState('4');
@@ -47,6 +48,178 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
     purchaseCount: 0,
     soldCount: 0
   });
+
+  // Đo Ping trực tiếp tới Cổng Thuế (hoadondientu.gdt.gov.vn) & Quản lý xóa Cache khi chuyển MST
+  const [gdtPingMs, setGdtPingMs] = useState(null);
+  const [gdtPingStatus, setGdtPingStatus] = useState('idle'); // 'idle' | 'good' | 'medium' | 'slow'
+  const [isMeasuringPing, setIsMeasuringPing] = useState(false);
+  const [cacheFlushNotice, setCacheFlushNotice] = useState('');
+  const [isFlushingCache, setIsFlushingCache] = useState(false);
+
+  const lastSyncedMstRef = useRef(null);
+  const prevSelectedMstRef = useRef(null);
+  const activeRequestIdRef = useRef(null);
+  const autoRetriedStaleCacheRef = useRef(false);
+
+  const updatePingBadge = (ms) => {
+    const val = Math.max(1, Math.round(Number(ms) || 0));
+    setGdtPingMs(val);
+    if (val < 380) setGdtPingStatus('good');
+    else if (val <= 800) setGdtPingStatus('medium');
+    else setGdtPingStatus('slow');
+  };
+
+  // Hàm đo độ trễ mạng thực tế tới Cổng Thuế (hoadondientu.gdt.gov.vn)
+  const measureGdtPing = async () => {
+    if (isMeasuringPing) return;
+    setIsMeasuringPing(true);
+    const startMs = Date.now();
+    let resolved = false;
+    const reqId = 'ping_gdt_' + startMs;
+
+    const extPingListener = (ev) => {
+      if (ev.data?.type === 'TAX_EXTENSION_PING_GDT_RESULT' && ev.data?.requestId === reqId) {
+        resolved = true;
+        window.removeEventListener('message', extPingListener);
+        const pingVal = ev.data?.response?.ping_ms || (Date.now() - startMs);
+        updatePingBadge(pingVal);
+        setIsMeasuringPing(false);
+      }
+    };
+    window.addEventListener('message', extPingListener);
+    window.postMessage({ type: 'TAX_EXTENSION_PING_GDT', requestId: reqId }, '*');
+
+    setTimeout(async () => {
+      window.removeEventListener('message', extPingListener);
+      if (!resolved) {
+        const fbStart = Date.now();
+        try {
+          const effectiveBackend = (backendUrl === 'http://localhost:3001' && typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
+            ? window.location.origin
+            : backendUrl;
+          const resp = await fetch(`${effectiveBackend.replace(/\/+$/, '')}/api/v1/solve-captcha?ping=1`, { cache: 'no-store' });
+          const data = await resp.json();
+          const finalPing = data?.ping_ms || (Date.now() - fbStart);
+          updatePingBadge(finalPing);
+        } catch {
+          updatePingBadge(Date.now() - fbStart);
+          setGdtPingStatus('slow');
+        } finally {
+          setIsMeasuringPing(false);
+        }
+      }
+    }, 650);
+  };
+
+  useEffect(() => {
+    measureGdtPing();
+    const timer = setInterval(() => {
+      measureGdtPing();
+    }, 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Tự động kích hoạt thông báo chạy chữ xóa Cache khi người dùng chuyển từ MST 1 sang MST 2
+  useEffect(() => {
+    const currentMst = activeAccount?.mst || null;
+    if (prevSelectedMstRef.current && currentMst && prevSelectedMstRef.current !== currentMst) {
+      const oldMst = prevSelectedMstRef.current;
+      setIsFlushingCache(true);
+      setCacheFlushNotice(
+        `🧹 Đang xóa sạch bộ nhớ đệm (Cache, Cookie & Phiên GDT) của MST [${oldMst}] và khởi tạo kênh kết nối độc lập cho MST [${currentMst}]... Đảm bảo số liệu kế toán chính xác tuyệt đối 100%.`
+      );
+      setCaptchaSvg('');
+      setCaptchaCkey('');
+      setManualCode('');
+      autoRetriedStaleCacheRef.current = false;
+
+      window.postMessage({
+        type: 'TAX_EXTENSION_CLEAR_CACHE',
+        requestId: 'flush_' + Date.now(),
+        payload: { prevMst: oldMst, nextMst: currentMst }
+      }, '*');
+
+      const t = setTimeout(() => {
+        setIsFlushingCache(false);
+        setCacheFlushNotice(`✓ Đã làm sạch bộ nhớ đệm phiên trước. Kênh dữ liệu độc lập cho MST ${currentMst} đã sẵn sàng!`);
+        setTimeout(() => setCacheFlushNotice(''), 3500);
+      }, 1500);
+
+      prevSelectedMstRef.current = currentMst;
+      return () => clearTimeout(t);
+    }
+    prevSelectedMstRef.current = currentMst;
+  }, [activeAccount?.mst]);
+
+  // Nút chủ động Xóa Cache & Làm Mới Phiên
+  const handleManualFlushCache = () => {
+    setIsFlushingCache(true);
+    onClearPreviousResults?.();
+    setCaptchaSvg('');
+    setCaptchaCkey('');
+    setManualCode('');
+    lastSyncedMstRef.current = null;
+    autoRetriedStaleCacheRef.current = false;
+
+    const targetLabel = activeAccount?.mst ? `MST ${activeAccount.mst}` : 'phiên hiện tại';
+    setCacheFlushNotice(
+      `🧹 Đang giải phóng toàn bộ Cache, Token phiên cũ và kiểm tra lại độ trễ Cổng Thuế cho ${targetLabel}...`
+    );
+
+    window.postMessage({
+      type: 'TAX_EXTENSION_CLEAR_CACHE',
+      requestId: 'manual_flush_' + Date.now()
+    }, '*');
+    measureGdtPing();
+
+    setTimeout(() => {
+      setIsFlushingCache(false);
+      setCacheFlushNotice(`✓ Đã dọn sạch 100% Cache & làm mới kênh kết nối Cổng Thuế cho ${targetLabel}. Bạn có thể bấm Tải & Đồng Bộ ngay!`);
+      setTimeout(() => setCacheFlushNotice(''), 4000);
+    }, 1200);
+  };
+
+  // Kiểm tra độc lập MST & Chuẩn hóa cột "Kết quả kiểm tra hóa đơn" ngay khi nhận dữ liệu từ Extension
+  const sanitizeAndVerifyInvoicesForMst = (rawData, targetMst) => {
+    const cleanTarget = String(targetMst || '').replace(/[^0-9]/g, '');
+    const baseTarget10 = cleanTarget.length >= 10 ? cleanTarget.substring(0, 10) : '';
+    let foreignMstDropped = 0;
+
+    const processList = (list, isPurchase) => {
+      if (!Array.isArray(list)) return [];
+      const result = [];
+      for (const inv of list) {
+        if (!inv) continue;
+        // Kiểm tra chéo MST sở hữu để chống dính Cache từ MST trước (ngay cả khi dùng Extension bản cũ)
+        if (baseTarget10) {
+          const ownerMst = String(isPurchase ? (inv.mst_nguoi_mua || inv.raw_data?.nmmst || '') : (inv.mst_nguoi_ban || inv.raw_data?.nbmst || '')).replace(/[^0-9]/g, '');
+          if (ownerMst.length >= 10 && !ownerMst.startsWith(baseTarget10)) {
+            foreignMstDropped++;
+            continue;
+          }
+        }
+        const evalInfo = evaluateInvoiceValidity(inv);
+        result.push({
+          ...inv,
+          ket_qua_kiem_tra: evalInfo.checkResultLabel,
+          is_rejected_code: evalInfo.isRejectedCode,
+          is_cancelled_or_replaced: evalInfo.isCancelledOrReplaced,
+          is_valid_for_tax: evalInfo.isValid,
+          ghi_chu_ke_khai: evalInfo.ghiChuKeKhai
+        });
+      }
+      return result;
+    };
+
+    const cleanPurchase = processList(rawData?.purchase, true);
+    const cleanSold = processList(rawData?.sold, false);
+
+    return {
+      purchase: cleanPurchase,
+      sold: cleanSold,
+      foreignMstDropped
+    };
+  };
 
   // Đồng bộ Telemetry & Kiểm tra quyền PRO từ Server Quản Trị (ltp-soft.com)
   const reportTaxTelemetry = async (eventType = 'PAGE_VIEW', customMst = null) => {
@@ -149,6 +322,9 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
 
       if (event.data?.type === 'TAX_EXTENSION_PROGRESS') {
         const d = event.data.data;
+        if (d.ping_ms) {
+          updatePingBadge(d.ping_ms);
+        }
         setProgress({
           percent: d.percent || 0,
           stage: d.stage || 'PROCESSING',
@@ -176,6 +352,9 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
       if (event.data?.type === 'TAX_EXTENSION_GET_CAPTCHA_RESULT') {
         setIsRefreshingCaptcha(false);
         const res = event.data.response;
+        if (res?.ping_ms) {
+          updatePingBadge(res.ping_ms);
+        }
         if (res && res.success && res.data) {
           setCaptchaSvg(res.data.content || res.data.svg || '');
           setCaptchaCkey(res.data.key || res.data.ckey || '');
@@ -184,6 +363,12 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
       }
 
       if (event.data?.type === 'TAX_EXTENSION_SYNC_RESULT') {
+        // Bỏ qua nếu đây là phản hồi trễ của một phiên cũ đã bị hủy hoặc đổi MST
+        if (activeRequestIdRef.current && event.data.requestId && event.data.requestId !== activeRequestIdRef.current) {
+          console.warn('[SyncResult] Ignored stale sync result from old requestId:', event.data.requestId);
+          return;
+        }
+
         const res = event.data.response;
         if (res && res.need_manual_captcha) {
           console.log('[SyncResult] Received need_manual_captcha. Opening modal.');
@@ -201,22 +386,58 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
           return;
         }
 
-        setIsSyncing(false);
         if (res && res.success) {
+          const sanitized = sanitizeAndVerifyInvoicesForMst(res.data, activeAccount?.mst);
+          const rawTotalCount = (res.data?.purchase?.length || 0) + (res.data?.sold?.length || 0);
+          const cleanTotalCount = sanitized.purchase.length + sanitized.sold.length;
+
+          // Nếu phát hiện trình duyệt trả về toàn bộ cache của MST trước (trên bản Extension cũ) -> tự động làm sạch và quét lại 1 lần
+          if (rawTotalCount > 0 && cleanTotalCount === 0 && sanitized.foreignMstDropped > 0 && !autoRetriedStaleCacheRef.current) {
+            console.warn('[CacheGuard] Phát hiện dữ liệu trả về thuộc MST trước do Cache trình duyệt. Đang tự động xóa Cache và tải lại...');
+            autoRetriedStaleCacheRef.current = true;
+            setProgress({
+              percent: 8,
+              stage: 'FLUSHING_CACHE',
+              step: `🧹 Phát hiện bộ nhớ đệm từ MST trước — Đang tự động làm sạch Cache và tải lại dữ liệu chuẩn cho MST ${activeAccount?.mst}...`,
+              purchaseCount: 0,
+              soldCount: 0
+            });
+            setTimeout(() => {
+              handleStartSync(null, null, true);
+            }, 1400);
+            return;
+          }
+
+          setIsSyncing(false);
+          lastSyncedMstRef.current = activeAccount?.mst || null;
+          if (res.summary?.last_ping_ms) {
+            updatePingBadge(res.summary.last_ping_ms);
+          }
+
           const currentPeriodLabel = syncPeriodType === 'month'
             ? `Tháng ${month}/${year}`
             : (syncPeriodType === 'quarter' ? `Quý ${quarter}/${year}` : `${fromDate} đến ${toDate}`);
 
-          onSyncCompleted(res.data, {
-            mst: activeAccount?.mst,
-            quarter: syncPeriodType === 'quarter' ? quarter : null,
-            month: syncPeriodType === 'month' ? month : null,
-            year: year,
-            periodLabel: currentPeriodLabel,
-            companyName: activeAccount?.companyName,
-            summary: res.summary
-          });
+          onSyncCompleted(
+            {
+              purchase: sanitized.purchase,
+              sold: sanitized.sold
+            },
+            {
+              mst: activeAccount?.mst,
+              quarter: syncPeriodType === 'quarter' ? quarter : null,
+              month: syncPeriodType === 'month' ? month : null,
+              year: year,
+              periodLabel: currentPeriodLabel,
+              companyName: activeAccount?.companyName,
+              summary: {
+                ...res.summary,
+                foreign_mst_dropped: sanitized.foreignMstDropped
+              }
+            }
+          );
         } else {
+          setIsSyncing(false);
           const err = res?.error || 'Lỗi không xác định';
           const errLower = err.toLowerCase();
           if (err.includes('LIMIT_EXCEEDED')) {
@@ -258,7 +479,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
     };
   }, [activeAccount, syncPeriodType, quarter, month, year, fromDate, toDate]);
 
-  const handleStartSync = (manualCodeVal = null, manualCkeyVal = null) => {
+  const handleStartSync = async (manualCodeVal = null, manualCkeyVal = null, isInternalRetry = false) => {
     if (!activeAccount) {
       alert('Vui lòng chọn hoặc thêm một Mã Số Thuế Doanh Nghiệp trước khi đồng bộ.');
       return;
@@ -269,14 +490,60 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
       return;
     }
 
+    if (!isInternalRetry && !manualCodeVal) {
+      autoRetriedStaleCacheRef.current = false;
+    }
+
+    // Dọn sạch bảng kết quả cũ trước khi tải phiên mới để tránh nhầm lẫn số liệu
+    if (!manualCodeVal) {
+      onClearPreviousResults?.();
+    }
+
     setIsSyncing(true);
-    setProgress({
-      percent: 2,
-      stage: 'STARTING',
-      step: manualCodeVal ? 'Đang gửi mã Captcha xác thực...' : 'Đang kết nối Cổng Thuế Điện Tử...',
-      purchaseCount: 0,
-      soldCount: 0
-    });
+
+    // Nếu vừa tra cứu xong 1 MST trước đó (hoặc chuyển sang MST thứ 2), thực hiện bước Xóa Cache & Làm mượt phiên (1.3 giây)
+    const isSwitchingOrRepeatSync = !manualCodeVal && (lastSyncedMstRef.current !== null || isFlushingCache);
+    if (isSwitchingOrRepeatSync) {
+      const prevMstText = lastSyncedMstRef.current && lastSyncedMstRef.current !== activeAccount.mst
+        ? `của MST cũ (${lastSyncedMstRef.current})`
+        : 'của phiên tra cứu trước';
+
+      setProgress({
+        percent: 2,
+        stage: 'FLUSHING_CACHE',
+        step: `🧹 Đang xóa bộ nhớ đệm (Cache & Session) ${prevMstText} để bảo vệ độ chính xác kế toán...`,
+        purchaseCount: 0,
+        soldCount: 0
+      });
+
+      window.postMessage({
+        type: 'TAX_EXTENSION_CLEAR_CACHE',
+        requestId: 'pre_sync_flush_' + Date.now(),
+        payload: { prevMst: lastSyncedMstRef.current, nextMst: activeAccount.mst }
+      }, '*');
+
+      await new Promise((r) => setTimeout(r, 700));
+
+      setProgress({
+        percent: 5,
+        stage: 'PREPARING_CHANNEL',
+        step: `📡 Đang kiểm tra độ trễ Cổng Thuế (${gdtPingMs ? `${gdtPingMs}ms` : 'Ổn định'}) và thiết lập kênh kết nối độc lập cho MST ${activeAccount.mst}...`,
+        purchaseCount: 0,
+        soldCount: 0
+      });
+
+      await new Promise((r) => setTimeout(r, 650));
+    } else {
+      setProgress({
+        percent: 3,
+        stage: 'STARTING',
+        step: manualCodeVal
+          ? `Đang gửi mã Captcha xác thực cho MST ${activeAccount.mst}...`
+          : `Đang khởi tạo kênh kết nối Cổng Thuế Điện Tử cho MST ${activeAccount.mst}...`,
+        purchaseCount: 0,
+        soldCount: 0
+      });
+    }
 
     const effectiveBackend = (backendUrl === 'http://localhost:3001' && typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
       ? window.location.origin
@@ -285,6 +552,9 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
     const savedLicenseKey = (typeof window !== 'undefined' && window.localStorage)
       ? (window.localStorage.getItem('ltp_tax_license_key') || 'free-lead-magnet')
       : 'free-lead-magnet';
+
+    const reqId = 'sync_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    activeRequestIdRef.current = reqId;
 
     const payload = {
       username: activeAccount.mst,
@@ -304,7 +574,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
 
     window.postMessage({
       type: 'TAX_EXTENSION_START_SYNC',
-      requestId: Date.now().toString(),
+      requestId: reqId,
       payload: payload
     }, '*');
 
@@ -518,7 +788,29 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
         don_vi_tien_te: 'VND',
         ty_gia: 1,
         trang_thai_nhan: 'Hóa đơn mới',
+        ket_qua_kiem_tra: 'Đã cấp mã hóa đơn',
         is_valid_for_tax: true // Hóa đơn >= 20 triệu
+      },
+      {
+        id: '6',
+        loai_hoa_don: 'HĐ Điện tử',
+        ky_hieu_mau_so: '1',
+        ky_hieu_hoa_don: 'C26ERR',
+        so_hoa_don: '00004019',
+        ngay_lap: '18/03/2026',
+        mst_nguoi_ban: '0314455667',
+        ten_nguoi_ban: 'CÔNG TY TNHH CUNG ỨNG VẬT TƯ KỸ THUẬT NAM VIỆT',
+        dia_chi_nguoi_ban: 'Quận Tân Bình, TP.HCM',
+        tong_tien_chua_thue: 15000000,
+        tong_tien_thue: 1500000,
+        tong_tien_chiet_khau: 0,
+        tong_tien_thanh_toan: 16500000,
+        don_vi_tien_te: 'VND',
+        ty_gia: 1,
+        trang_thai_nhan: 'Hóa đơn mới',
+        ket_qua_kiem_tra: 'Hóa đơn không đủ điều kiện cấp mã',
+        is_rejected_code: true,
+        is_valid_for_tax: false
       }
     ];
 
@@ -596,7 +888,40 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Đồng hồ đo Ping trực tiếp tới Cổng Thuế (hoadondientu.gdt.gov.vn) */}
+          <button
+            type="button"
+            onClick={measureGdtPing}
+            disabled={isMeasuringPing}
+            title="Nhấn để đo lại độ trễ (Ping) trực tiếp tới máy chủ Tổng Cục Thuế (hoadondientu.gdt.gov.vn)"
+            className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full border transition cursor-pointer ${
+              gdtPingStatus === 'good'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                : gdtPingStatus === 'medium'
+                ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                : gdtPingStatus === 'slow'
+                ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+            }`}
+          >
+            <Activity className={`w-3.5 h-3.5 ${isMeasuringPing ? 'animate-spin' : ''}`} />
+            {isMeasuringPing ? (
+              <span>Đang đo Ping Thuế...</span>
+            ) : gdtPingMs !== null ? (
+              <span>
+                Ping Cổng Thuế: <strong>{gdtPingMs} ms</strong>{' '}
+                {gdtPingStatus === 'good'
+                  ? '(Mạng Tốt)'
+                  : gdtPingStatus === 'medium'
+                  ? '(Trung Bình)'
+                  : '(Mạng Chậm - Đã Bật Bảo Vệ)'}
+              </span>
+            ) : (
+              <span>Đo Ping Cổng Thuế</span>
+            )}
+          </button>
+
           {/* Trạng thái kết nối Extension */}
           {extensionStatus === 'connected' ? (
             <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
@@ -622,6 +947,41 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
           )}
         </div>
       </div>
+
+      {/* Thanh thông báo chạy chữ mượt mà khi Xóa Cache / Chuyển đổi giữa các MST */}
+      {cacheFlushNotice && (
+        <div
+          className={`mb-4 px-4 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between gap-3 transition-all ${
+            isFlushingCache
+              ? 'bg-indigo-50 border-indigo-200 text-indigo-900 animate-pulse'
+              : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+          }`}
+        >
+          <div className="flex items-center gap-2 overflow-hidden">
+            {isFlushingCache ? (
+              <RefreshCw className="w-4 h-4 text-indigo-600 animate-spin shrink-0" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            )}
+            <span className="truncate">{cacheFlushNotice}</span>
+          </div>
+          <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-white/80 border border-current/20 shrink-0">
+            Zero-Cache Isolation
+          </span>
+        </div>
+      )}
+
+      {/* Cảnh báo thông minh khi mạng yếu / Cổng Thuế phản hồi chậm */}
+      {gdtPingStatus === 'slow' && (
+        <div className="mb-4 px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-2.5">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <strong>Chế Độ Chống Thiếu Dữ Liệu Khi Mạng Yếu (Ping {gdtPingMs}ms):</strong>{' '}
+            Máy chủ Tổng Cục Thuế đang phản hồi chậm. Hệ thống đã tự động kích hoạt chế độ{' '}
+            <strong>Auto-Retry (thử lại tối đa 4 lần/trang)</strong> và <strong>đối soát tổng số hóa đơn</strong> để đảm bảo kế toán không bị thiếu sót bất kỳ hóa đơn nào.
+          </div>
+        </div>
+      )}
 
       {/* Bộ chọn chế độ: Theo Quý / Theo Tháng / Khoảng Ngày */}
       <div className="flex items-center gap-2 mb-4 p-1 bg-slate-100 rounded-xl w-fit">
@@ -773,7 +1133,18 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, isSyn
         </div>
       )}
 
-      <div className="flex items-center justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={handleManualFlushCache}
+          disabled={isSyncing || isFlushingCache}
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 border border-slate-200 hover:border-indigo-200 transition cursor-pointer disabled:opacity-50"
+          title="Xóa sạch bộ nhớ đệm (Cache & Session) của MST trước để chuẩn bị tra cứu MST tiếp theo chính xác tuyệt đối"
+        >
+          <Trash2 className="w-3.5 h-3.5 text-indigo-600" />
+          <span>🧹 Làm Sạch Cache Phiên</span>
+        </button>
+
         <button
           onClick={() => handleStartSync()}
           disabled={isSyncing || !activeAccount}

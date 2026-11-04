@@ -19,14 +19,19 @@ export class ApiRunner {
     this.backendUrl = backendUrl ? backendUrl.replace(/\/+$/, '') : 'https://tax.ltp-soft.com';
     this.licenseKey = licenseKey;
     this.jwt = null;
+    this.lastPingMs = 0;
   }
 
   setJwt(token) {
     this.jwt = token;
   }
 
+  clearSession() {
+    this.jwt = null;
+  }
+
   /**
-   * Gọi API lên cổng Thuế
+   * Gọi API lên cổng Thuế (Tuyệt đối chống lưu Cache giữa các MST & có đo độ trễ mạng)
    */
   async requestTax(path, options = {}) {
     let url = path.startsWith('http') ? path : `${this.baseUrl}${path}`;
@@ -44,33 +49,57 @@ export class ApiRunner {
     const headers = {
       'Accept': 'application/json, text/plain, */*',
       'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
       'request-id': generateUUID(),
       'End-Point': '/',
       ...(this.jwt ? { 'Authorization': `Bearer ${this.jwt}` } : {}),
       ...(options.headers || {})
     };
 
-    const response = await fetch(url, {
-      ...options,
-      headers
-    });
+    const controller = new AbortController();
+    const timeoutMs = options.timeoutMs || 15000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const startMs = Date.now();
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorJson = null;
-      try {
-        errorJson = JSON.parse(errorText);
-      } catch (e) {
-        // Not JSON
+    try {
+      const response = await fetch(url, {
+        ...options,
+        cache: 'no-store',
+        credentials: 'omit',
+        headers,
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      this.lastPingMs = Math.max(1, Date.now() - startMs);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorJson = null;
+        try {
+          errorJson = JSON.parse(errorText);
+        } catch (e) {
+          // Not JSON
+        }
+
+        const err = new Error(errorJson?.message || `Tax API Error [${response.status}]: ${errorText}`);
+        err.status = response.status;
+        err.data = errorJson;
+        throw err;
       }
 
-      const err = new Error(errorJson?.message || `Tax API Error [${response.status}]: ${errorText}`);
-      err.status = response.status;
-      err.data = errorJson;
+      return await response.json();
+    } catch (err) {
+      clearTimeout(timeoutId);
+      this.lastPingMs = Math.max(1, Date.now() - startMs);
+      if (err.name === 'AbortError') {
+        const timeoutErr = new Error('Cổng Thuế phản hồi quá thời gian chờ (Timeout > 15s)');
+        timeoutErr.status = 504;
+        throw timeoutErr;
+      }
       throw err;
     }
-
-    return await response.json();
   }
 
   /**

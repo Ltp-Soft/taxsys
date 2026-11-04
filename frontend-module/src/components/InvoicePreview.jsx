@@ -15,20 +15,39 @@ import {
   CreditCard,
   Building
 } from 'lucide-react';
-import { exportInvoicesToExcel, detectInvoiceTaxRate } from '../utils/excelExporter';
+import { exportInvoicesToExcel, detectInvoiceTaxRate, evaluateInvoiceValidity } from '../utils/excelExporter';
 
 export default function InvoicePreview({ invoiceData, syncMeta }) {
   const [activeTab, setActiveTab] = useState('purchase'); // 'purchase' | 'sold'
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'valid' | 'invalid'
+  const [checkResultFilter, setCheckResultFilter] = useState('all'); // 'all' | 'granted' | 'rejected'
   const [amountFilter, setAmountFilter] = useState('all'); // 'all' | 'gte5' | 'lt5'
   const [taxRateFilter, setTaxRateFilter] = useState('all'); // 'all' | '0%' | '5%' | '8%' | '10%'
   const [streamFilter, setStreamFilter] = useState('all'); // 'all' | 'normal' | 'pos'
   const [isExporting, setIsExporting] = useState(false);
   const containerRef = useRef(null);
 
-  const purchaseList = invoiceData?.purchase || [];
-  const soldList = invoiceData?.sold || [];
+  // Chuẩn hóa danh sách hóa đơn để đảm bảo cột "Kết quả kiểm tra hóa đơn" ("Đã cấp mã hóa đơn" vs "Hóa đơn không đủ điều kiện cấp mã")
+  // luôn được đánh giá chính xác và loại trừ khỏi chi phí/thuế hợp lệ
+  const normalizeList = (rawList) => {
+    if (!Array.isArray(rawList)) return [];
+    return rawList.map((inv) => {
+      if (!inv) return inv;
+      const evalInfo = evaluateInvoiceValidity(inv);
+      return {
+        ...inv,
+        ket_qua_kiem_tra: evalInfo.checkResultLabel,
+        is_rejected_code: evalInfo.isRejectedCode,
+        is_cancelled_or_replaced: evalInfo.isCancelledOrReplaced,
+        is_valid_for_tax: evalInfo.isValid,
+        ghi_chu_ke_khai: evalInfo.ghiChuKeKhai
+      };
+    });
+  };
+
+  const purchaseList = useMemo(() => normalizeList(invoiceData?.purchase || []), [invoiceData?.purchase]);
+  const soldList = useMemo(() => normalizeList(invoiceData?.sold || []), [invoiceData?.sold]);
   const totalCount = purchaseList.length + soldList.length;
 
   // Tự động cuộn xuống khi có dữ liệu mới
@@ -43,9 +62,21 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
     const calc = (list) => {
       const valid = list.filter(i => i.is_valid_for_tax);
       const invalid = list.filter(i => !i.is_valid_for_tax);
+      const rejectedCode = list.filter(i => i.is_rejected_code);
+      const cancelled = list.filter(i => i.is_cancelled_or_replaced && !i.is_rejected_code);
       const totalAmount = valid.reduce((sum, i) => sum + (Number(i.tong_tien_thanh_toan) || 0), 0);
       const totalTax = valid.reduce((sum, i) => sum + (Number(i.tong_tien_thue) || 0), 0);
-      return { total: list.length, validCount: valid.length, invalidCount: invalid.length, totalAmount, totalTax };
+      const rejectedAmount = rejectedCode.reduce((sum, i) => sum + (Number(i.tong_tien_thanh_toan) || 0), 0);
+      return {
+        total: list.length,
+        validCount: valid.length,
+        invalidCount: invalid.length,
+        rejectedCodeCount: rejectedCode.length,
+        cancelledCount: cancelled.length,
+        totalAmount,
+        totalTax,
+        rejectedAmount
+      };
     };
 
     return {
@@ -56,8 +87,8 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
 
   // Dữ liệu phục vụ Sheet 3 (Tổng hợp nghĩa vụ thuế GTGT & Đối soát Ngân hàng)
   const taxSummary = useMemo(() => {
-    const validPurchase = (purchaseList || []).filter(i => i && i.is_valid_for_tax !== false && i.trang_thai_hoa_don !== '4' && i.trang_thai_hoa_don !== '6');
-    const validSold = (soldList || []).filter(i => i && i.is_valid_for_tax !== false && i.trang_thai_hoa_don !== '4' && i.trang_thai_hoa_don !== '6');
+    const validPurchase = (purchaseList || []).filter(i => i && i.is_valid_for_tax);
+    const validSold = (soldList || []).filter(i => i && i.is_valid_for_tax);
 
     const totalSoldBeforeTax = validSold.reduce((s, i) => s + (Number(i?.tong_tien_chua_thue) || 0), 0);
     const totalSoldTax = validSold.reduce((s, i) => s + (Number(i?.tong_tien_thue) || 0), 0);
@@ -111,6 +142,10 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
       if (statusFilter === 'valid' && !item.is_valid_for_tax) return false;
       if (statusFilter === 'invalid' && item.is_valid_for_tax) return false;
 
+      // Lọc theo Kết quả kiểm tra hóa đơn ("Đã cấp mã hóa đơn" vs "Hóa đơn không đủ điều kiện cấp mã")
+      if (checkResultFilter === 'granted' && item.is_rejected_code) return false;
+      if (checkResultFilter === 'rejected' && !item.is_rejected_code) return false;
+
       // Lọc theo hạn mức thanh toán ngân hàng (≥ 5 triệu)
       const totalAmount = Number(item?.tong_tien_thanh_toan) || 0;
       if (amountFilter === 'gte5' && totalAmount < 5000000) return false;
@@ -141,7 +176,7 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
       }
       return true;
     });
-  }, [currentList, statusFilter, amountFilter, taxRateFilter, streamFilter, searchTerm, activeTab]);
+  }, [currentList, statusFilter, checkResultFilter, amountFilter, taxRateFilter, streamFilter, searchTerm, activeTab]);
 
   const displayPeriod = syncMeta?.periodLabel || (syncMeta?.month ? `Tháng ${syncMeta.month}/${syncMeta.year}` : (syncMeta?.quarter ? `Quý ${syncMeta.quarter}/${syncMeta.year}` : `Năm ${syncMeta?.year}`));
 
@@ -211,6 +246,17 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
         </div>
       )}
 
+      {/* Thông báo cảnh báo nếu phát hiện Hóa đơn không đủ điều kiện cấp mã */}
+      {(stats.purchase.rejectedCodeCount + stats.sold.rejectedCodeCount > 0) && (
+        <div className="bg-red-50 border border-red-300 rounded-xl p-3.5 mb-4 flex items-start gap-2.5 text-xs text-red-900 shadow-2xs">
+          <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+          <div>
+            <strong className="text-red-700 uppercase">Phát hiện {stats.purchase.rejectedCodeCount + stats.sold.rejectedCodeCount} "Hóa đơn không đủ điều kiện cấp mã":</strong>{' '}
+            Hệ thống đã tự động <strong>tô chữ đỏ nổi bật</strong> trên bảng đối soát và trong file Excel tải về, đồng thời <strong>loại trừ hoàn toàn ({(stats.purchase.rejectedAmount + stats.sold.rejectedAmount).toLocaleString('vi-VN')} đ)</strong> khỏi tổng chi phí và thuế GTGT hợp lệ bằng công thức <code className="bg-red-100 px-1.5 py-0.5 rounded font-mono font-bold text-red-800">=SUMIF / =SUMIFS</code> theo cột <strong>"Kết quả kiểm tra hóa đơn"</strong>.
+          </div>
+        </div>
+      )}
+
       {/* Trường hợp không có hóa đơn nào trong Quý */}
       {totalCount === 0 ? (
         <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-6 text-center mb-6">
@@ -273,18 +319,38 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
               <div className="text-base font-bold text-slate-900 font-mono">
                 {stats.purchase.totalTax.toLocaleString('vi-VN')} đ
               </div>
-              <p className="text-xs text-slate-500 mt-1">Được khấu trừ hợp lệ</p>
+              <p className="text-xs text-slate-500 mt-1">Được khấu trừ hợp lệ (Đã cấp mã)</p>
             </div>
 
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5">
+            <div className={`border rounded-xl p-3.5 ${
+              (stats.purchase.rejectedCodeCount + stats.sold.rejectedCodeCount) > 0
+                ? 'bg-red-50/70 border-red-200'
+                : 'bg-slate-50 border-slate-200'
+            }`}>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-semibold text-amber-700">Cảnh Báo HĐ Bị Loại Trừ</span>
-                <ShieldAlert className="w-4 h-4 text-amber-600" />
+                <span className={`text-xs font-semibold ${
+                  (stats.purchase.rejectedCodeCount + stats.sold.rejectedCodeCount) > 0 ? 'text-red-700' : 'text-amber-700'
+                }`}>
+                  Cảnh Báo HĐ Bị Loại Trừ
+                </span>
+                <ShieldAlert className={`w-4 h-4 ${
+                  (stats.purchase.rejectedCodeCount + stats.sold.rejectedCodeCount) > 0 ? 'text-red-600' : 'text-amber-600'
+                }`} />
               </div>
-              <div className="text-base font-bold text-amber-700 font-mono">
+              <div className={`text-base font-bold font-mono ${
+                (stats.purchase.rejectedCodeCount + stats.sold.rejectedCodeCount) > 0 ? 'text-red-700' : 'text-amber-700'
+              }`}>
                 {stats.purchase.invalidCount + stats.sold.invalidCount} HĐ
               </div>
-              <p className="text-xs text-amber-700 mt-1">Hóa đơn đã hủy hoặc thay thế</p>
+              <p className="text-[11px] text-slate-600 mt-1">
+                <span className="text-red-600 font-bold">
+                  {stats.purchase.rejectedCodeCount + stats.sold.rejectedCodeCount} Không đủ ĐK cấp mã
+                </span>
+                {' • '}
+                <span className="text-amber-700 font-medium">
+                  {stats.purchase.cancelledCount + stats.sold.cancelledCount} Đã hủy/thay thế
+                </span>
+              </p>
             </div>
           </div>
 
@@ -337,6 +403,23 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                   />
                 </div>
 
+                {/* Bộ lọc Kết quả kiểm tra hóa đơn (Đã cấp mã vs Không đủ điều kiện cấp mã) */}
+                <select
+                  value={checkResultFilter}
+                  onChange={(e) => setCheckResultFilter(e.target.value)}
+                  className={`text-xs px-2.5 py-1.5 border rounded-xl focus:outline-none focus:border-blue-500 font-bold ${
+                    checkResultFilter === 'rejected'
+                      ? 'bg-red-50 border-red-300 text-red-700'
+                      : checkResultFilter === 'granted'
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                      : 'bg-white border-slate-300 text-slate-800 font-medium'
+                  }`}
+                >
+                  <option value="all">🔍 Tất cả KQ kiểm tra HĐ</option>
+                  <option value="granted">✓ Đã cấp mã hóa đơn</option>
+                  <option value="rejected">🚨 Hóa đơn không đủ điều kiện cấp mã</option>
+                </select>
+
                 {/* Bộ lọc trạng thái */}
                 <select
                   value={statusFilter}
@@ -344,8 +427,8 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                   className="text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
                 >
                   <option value="all">Tất cả trạng thái</option>
-                  <option value="valid">✓ Chỉ HĐ Hợp lệ</option>
-                  <option value="invalid">✗ HĐ Đã Hủy / Thay Thế</option>
+                  <option value="valid">✓ Chỉ HĐ Hợp lệ kê khai</option>
+                  <option value="invalid">✗ HĐ Bị Loại Trừ (Hủy / Không cấp mã)</option>
                 </select>
 
                 {/* Bộ lọc hạn mức thanh toán ngân hàng (≥ 5 triệu) */}
@@ -383,11 +466,12 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                   <option value="pos">🧾 HĐ Máy tính tiền (POS)</option>
                 </select>
 
-                {(searchTerm || statusFilter !== 'all' || amountFilter !== 'all' || taxRateFilter !== 'all' || streamFilter !== 'all') && (
+                {(searchTerm || statusFilter !== 'all' || checkResultFilter !== 'all' || amountFilter !== 'all' || taxRateFilter !== 'all' || streamFilter !== 'all') && (
                   <button
                     onClick={() => {
                       setSearchTerm('');
                       setStatusFilter('all');
+                      setCheckResultFilter('all');
                       setAmountFilter('all');
                       setTaxRateFilter('all');
                       setStreamFilter('all');
@@ -632,19 +716,21 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                     <th className="p-2.5 text-center">Thuế Suất</th>
                     <th className="p-2.5 text-right">Thuế GTGT</th>
                     <th className="p-2.5 text-right">Tổng Thanh Toán</th>
-                    <th className="p-2.5 text-center">Trạng Thái</th>
+                    <th className="p-2.5 text-center">Trạng Thái HĐ</th>
+                    <th className="p-2.5 text-center">Kết Quả Kiểm Tra Hóa Đơn</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
                   {filteredList.length === 0 ? (
                     <tr>
-                      <td colSpan="11" className="text-center py-8 text-slate-400">
+                      <td colSpan="12" className="text-center py-8 text-slate-400">
                         Không tìm thấy hóa đơn nào phù hợp với bộ lọc tìm kiếm.
                       </td>
                     </tr>
                   ) : (
                     filteredList.map((item, idx) => {
                       const isValid = item.is_valid_for_tax;
+                      const isRejectedCode = item.is_rejected_code;
                       const taxRateInfo = detectInvoiceTaxRate(item);
                       const rateBadgeClass =
                         taxRateInfo.code === '0%'
@@ -659,44 +745,59 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                       return (
                         <tr
                           key={item.id || idx}
-                          className={`hover:bg-slate-50 transition ${
-                            !isValid ? 'bg-amber-50/70 text-amber-950' : ''
+                          className={`transition ${
+                            isRejectedCode
+                              ? 'bg-red-50/90 hover:bg-red-100/80 text-red-700 font-semibold'
+                              : !isValid
+                              ? 'bg-amber-50/70 hover:bg-amber-100/60 text-amber-950'
+                              : 'hover:bg-slate-50'
                           }`}
                         >
-                          <td className="p-2.5 text-center text-slate-500">{idx + 1}</td>
+                          <td className={`p-2.5 text-center ${isRejectedCode ? 'text-red-600 font-bold' : 'text-slate-500'}`}>{idx + 1}</td>
                           <td className="p-2.5 text-center">
-                            <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-200 text-slate-700">
+                            <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                              isRejectedCode ? 'bg-red-200 text-red-800' : 'bg-slate-200 text-slate-700'
+                            }`}>
                               {item.loai_hoa_don}
                             </span>
                           </td>
-                          <td className="p-2.5 text-center font-mono">
+                          <td className={`p-2.5 text-center font-mono ${isRejectedCode ? 'text-red-600 font-bold' : ''}`}>
                             {item.ky_hieu_mau_so} - {item.ky_hieu_hoa_don}
                           </td>
-                          <td className="p-2.5 text-center font-mono font-bold text-blue-600">
+                          <td className={`p-2.5 text-center font-mono font-bold ${isRejectedCode ? 'text-red-600' : 'text-blue-600'}`}>
                             {item.so_hoa_don}
                           </td>
-                          <td className="p-2.5 text-center text-slate-600">{item.ngay_lap}</td>
+                          <td className={`p-2.5 text-center ${isRejectedCode ? 'text-red-600 font-bold' : 'text-slate-600'}`}>{item.ngay_lap}</td>
                           <td className="p-2.5">
-                            <div className="font-semibold text-slate-800">
+                            <div className={`font-semibold ${isRejectedCode ? 'text-red-700 font-bold' : 'text-slate-800'}`}>
                               {activeTab === 'purchase' ? item.ten_nguoi_ban : item.ten_nguoi_mua}
                             </div>
-                            <div className="text-[11px] text-slate-500 font-mono">
+                            <div className={`text-[11px] font-mono ${isRejectedCode ? 'text-red-600' : 'text-slate-500'}`}>
                               MST: {activeTab === 'purchase' ? item.mst_nguoi_ban : item.mst_nguoi_mua}
                             </div>
                           </td>
-                          <td className="p-2.5 text-right font-medium">
+                          <td className={`p-2.5 text-right font-medium ${isRejectedCode ? 'text-red-600 font-bold line-through' : ''}`}>
                             {Number(item.tong_tien_chua_thue || 0).toLocaleString('vi-VN')} đ
                           </td>
                           <td className="p-2.5 text-center">
-                            <span className={`inline-block px-2 py-0.5 rounded-md text-[11px] font-extrabold font-mono border ${rateBadgeClass}`}>
+                            <span className={`inline-block px-2 py-0.5 rounded-md text-[11px] font-extrabold font-mono border ${
+                              isRejectedCode ? 'bg-red-100 text-red-700 border-red-300' : rateBadgeClass
+                            }`}>
                               {taxRateInfo.label}
                             </span>
                           </td>
-                          <td className="p-2.5 text-right font-medium">
+                          <td className={`p-2.5 text-right font-medium ${isRejectedCode ? 'text-red-600 font-bold line-through' : ''}`}>
                             {Number(item.tong_tien_thue || 0).toLocaleString('vi-VN')} đ
                           </td>
-                          <td className="p-2.5 text-right font-bold text-slate-900">
-                            <div>{Number(item.tong_tien_thanh_toan || 0).toLocaleString('vi-VN')} đ</div>
+                          <td className={`p-2.5 text-right font-bold ${isRejectedCode ? 'text-red-600' : 'text-slate-900'}`}>
+                            <div className={isRejectedCode ? 'line-through' : ''}>
+                              {Number(item.tong_tien_thanh_toan || 0).toLocaleString('vi-VN')} đ
+                            </div>
+                            {isRejectedCode && (
+                              <span className="inline-block mt-0.5 text-[10px] font-extrabold text-red-700 bg-red-100 border border-red-300 px-1.5 py-0.2 rounded">
+                                ✗ Không tính chi phí
+                              </span>
+                            )}
                             {activeTab === 'purchase' && isValid && Number(item.tong_tien_thanh_toan || 0) >= 5000000 && (
                               <span className="inline-block mt-0.5 text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.2 rounded">
                                 🏦 ≥ 5tr: Cần CK
@@ -704,13 +805,31 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                             )}
                           </td>
                           <td className="p-2.5 text-center">
-                            {isValid ? (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full">
-                                <CheckCircle className="w-3 h-3" /> {item.trang_thai_nhan}
+                            {!item.is_cancelled_or_replaced ? (
+                              <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                                isRejectedCode ? 'text-red-700 bg-red-100 border border-red-200' : 'text-emerald-700 bg-emerald-100/70'
+                              }`}>
+                                <CheckCircle className="w-3 h-3" /> {item.trang_thai_nhan || 'Hóa đơn mới'}
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-700 bg-red-100/70 px-2 py-0.5 rounded-full" title="Không tính vào tổng cộng kê khai thuế">
-                                <AlertCircle className="w-3 h-3" /> {item.trang_thai_nhan} (Đã hủy)
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300" title="Hóa đơn đã bị hủy hoặc thay thế">
+                                <AlertCircle className="w-3 h-3" /> {item.trang_thai_nhan}
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2.5 text-center">
+                            {isRejectedCode ? (
+                              <span
+                                className="inline-flex items-center gap-1 text-[11px] font-extrabold text-red-700 bg-red-100 border border-red-300 px-2.5 py-1 rounded-lg shadow-2xs"
+                                title="Hóa đơn không đủ điều kiện cấp mã — Đã tự động loại trừ khỏi chi phí và thuế"
+                              >
+                                <AlertCircle className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                                <span>Hóa đơn không đủ điều kiện cấp mã</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-lg">
+                                <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />
+                                <span>{item.ket_qua_kiem_tra || 'Đã cấp mã hóa đơn'}</span>
                               </span>
                             )}
                           </td>

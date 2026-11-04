@@ -62,6 +62,26 @@ window.addEventListener('message', (event) => {
     });
   }
 
+  if (type === 'TAX_EXTENSION_CLEAR_CACHE') {
+    chrome.runtime.sendMessage({ type: 'CLEAR_TAX_CACHE', payload: payload }, (res) => {
+      window.postMessage({
+        type: 'TAX_EXTENSION_CLEAR_CACHE_RESULT',
+        requestId: requestId,
+        response: res
+      }, '*');
+    });
+  }
+
+  if (type === 'TAX_EXTENSION_PING_GDT') {
+    chrome.runtime.sendMessage({ type: 'PING_TAX_SERVER' }, (res) => {
+      window.postMessage({
+        type: 'TAX_EXTENSION_PING_GDT_RESULT',
+        requestId: requestId,
+        response: res
+      }, '*');
+    });
+  }
+
   if (type === 'TAX_EXTENSION_PING') {
     chrome.runtime.sendMessage({ type: 'PING' }, (res) => {
       window.postMessage({
