@@ -642,7 +642,7 @@ export async function exportInvoicesToExcel({
     rateHeaderRow.height = 24;
     sheet.mergeCells(`H${currentRowIdx}:N${currentRowIdx}`);
     const rateTitleCell = rateHeaderRow.getCell(8);
-    rateTitleCell.value = '🎨 BẢNG TỔNG HỢP PHÂN LOẠI THEO MỨC THUẾ SUẤT GTGT (0% • 5% • 8% • 10%)';
+    rateTitleCell.value = 'BẢNG TỔNG HỢP PHÂN LOẠI THEO MỨC THUẾ SUẤT GTGT (0% • 5% • 8% • 10%)';
     rateTitleCell.font = { name: 'Times New Roman', size: 10.5, bold: true, color: { argb: 'FF1F4E79' } };
     rateTitleCell.alignment = { horizontal: 'center', vertical: 'middle' };
     for (let c = 8; c <= 14; c++) {
@@ -827,7 +827,7 @@ export async function exportInvoicesToExcel({
     const row10 = sheet.getRow(10);
     row10.height = 30;
     sheet.mergeCells('A10:C10');
-    row10.getCell(1).value = isPayable ? '👉 SỐ TIỀN THUẾ GTGT PHẢI NỘP VÀO NGÂN SÁCH:' : '👉 SỐ THUẾ GTGT CÒN ĐƯỢC KHẤU TRỪ CHUYỂN KỲ SAU:';
+    row10.getCell(1).value = isPayable ? 'SỐ TIỀN THUẾ GTGT PHẢI NỘP VÀO NGÂN SÁCH:' : 'SỐ THUẾ GTGT CÒN ĐƯỢC KHẤU TRỪ CHUYỂN KỲ SAU:';
     row10.getCell(1).font = { name: 'Times New Roman', size: 11, bold: true, color: { argb: isPayable ? 'FFC00000' : 'FF375623' } };
     row10.getCell(1).alignment = { horizontal: 'right', vertical: 'middle' };
 
@@ -877,7 +877,7 @@ export async function exportInvoicesToExcel({
 
     sheet.mergeCells('A13:K13');
     const sec2Note = sheet.getCell('A13');
-    sec2Note.value = '⚠️ Căn cứ Luật Thuế GTGT sửa đổi (hiệu lực từ 01/07/2025): Hóa đơn từ 5.000.000đ trở lên bắt buộc phải có chứng từ thanh toán không dùng tiền mặt (Ủy nhiệm chi / Chuyển khoản) thì mới được khấu trừ thuế & tính chi phí hợp lý.';
+    sec2Note.value = 'Căn cứ Luật Thuế GTGT sửa đổi (hiệu lực từ 01/07/2025): Hóa đơn từ 5.000.000đ trở lên bắt buộc phải có chứng từ thanh toán không dùng tiền mặt (Ủy nhiệm chi / Chuyển khoản) thì mới được khấu trừ thuế & tính chi phí hợp lý.';
     sec2Note.font = { name: 'Times New Roman', size: 9.5, italic: true, color: { argb: 'FFC00000' } };
     sheet.getRow(13).height = 18;
 

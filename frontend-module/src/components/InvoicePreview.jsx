@@ -274,7 +274,7 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
               onClick={handleExportExcel}
               className="text-xs font-bold text-emerald-700 bg-white border border-emerald-300 hover:bg-emerald-50 px-4 py-2 rounded-lg transition"
             >
-              📄 Vẫn Xuất File Excel Mẫu (Trống)
+              Vẫn Xuất File Excel Mẫu (Trống)
             </button>
             <span className="text-xs text-slate-500">
               hoặc chọn Quý khác (ví dụ Quý 1, Quý 2) trên bảng điều khiển và bấm Quét lại.
@@ -415,9 +415,9 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                       : 'bg-white border-slate-300 text-slate-800 font-medium'
                   }`}
                 >
-                  <option value="all">🔍 Tất cả KQ kiểm tra HĐ</option>
+                  <option value="all">Tất cả KQ kiểm tra HĐ</option>
                   <option value="granted">✓ Đã cấp mã hóa đơn</option>
-                  <option value="rejected">🚨 Hóa đơn không đủ điều kiện cấp mã</option>
+                  <option value="rejected">Hóa đơn không đủ điều kiện cấp mã</option>
                 </select>
 
                 {/* Bộ lọc trạng thái */}
@@ -438,8 +438,8 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                   className="text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
                 >
                   <option value="all">Tất cả giá trị</option>
-                  <option value="gte5">🏦 HĐ ≥ 5 Triệu (Bắt buộc CK ngân hàng)</option>
-                  <option value="lt5">💵 HĐ &lt; 5 Triệu (Tiền mặt / CK)</option>
+                  <option value="gte5">HĐ ≥ 5 Triệu (Bắt buộc CK ngân hàng)</option>
+                  <option value="lt5">HĐ &lt; 5 Triệu (Tiền mặt / CK)</option>
                 </select>
 
                 {/* Bộ lọc theo mức thuế suất GTGT (0%, 5%, 8%, 10%) */}
@@ -448,11 +448,11 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                   onChange={(e) => setTaxRateFilter(e.target.value)}
                   className="text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
                 >
-                  <option value="all">🎨 Tất cả thuế suất</option>
-                  <option value="0%">⚪ Thuế suất 0% / KCT</option>
-                  <option value="5%">🔵 Thuế suất 5%</option>
-                  <option value="8%">🟢 Thuế suất 8%</option>
-                  <option value="10%">🟠 Thuế suất 10%</option>
+                  <option value="all">Tất cả thuế suất</option>
+                  <option value="0%">Thuế suất 0% / KCT</option>
+                  <option value="5%">Thuế suất 5%</option>
+                  <option value="8%">Thuế suất 8%</option>
+                  <option value="10%">Thuế suất 10%</option>
                 </select>
 
                 {/* Bộ lọc nguồn xuất (Điện tử vs Máy tính tiền) */}
@@ -462,8 +462,8 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                   className="text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
                 >
                   <option value="all">Tất cả nguồn HĐ</option>
-                  <option value="normal">📄 HĐ Điện tử</option>
-                  <option value="pos">🧾 HĐ Máy tính tiền (POS)</option>
+                  <option value="normal">HĐ Điện tử</option>
+                  <option value="pos">HĐ Máy tính tiền (POS)</option>
                 </select>
 
                 {(searchTerm || statusFilter !== 'all' || checkResultFilter !== 'all' || amountFilter !== 'all' || taxRateFilter !== 'all' || streamFilter !== 'all') && (
@@ -562,7 +562,7 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                     </tr>
                     <tr className={`${taxSummary.isPayable ? 'bg-red-50/80 border-t-2 border-red-200' : 'bg-emerald-50/80 border-t-2 border-emerald-200'}`}>
                       <td colSpan="3" className={`p-3 font-sans font-extrabold text-right text-xs ${taxSummary.isPayable ? 'text-red-900' : 'text-emerald-900'}`}>
-                        {taxSummary.isPayable ? '👉 SỐ TIỀN THUẾ GTGT PHẢI NỘP VÀO NGÂN SÁCH:' : '👉 SỐ THUẾ GTGT CÒN ĐƯỢC KHẤU TRỪ CHUYỂN KỲ SAU:'}
+                        {taxSummary.isPayable ? 'SỐ TIỀN THUẾ GTGT PHẢI NỘP VÀO NGÂN SÁCH:' : 'SỐ THUẾ GTGT CÒN ĐƯỢC KHẤU TRỪ CHUYỂN KỲ SAU:'}
                       </td>
                       <td className="p-3 text-right text-slate-400">-</td>
                       <td className={`p-3 text-right font-black text-sm ${taxSummary.isPayable ? 'text-red-700' : 'text-emerald-700'}`}>
@@ -591,7 +591,7 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                 </div>
 
                 <div className="bg-amber-50/70 border-b border-amber-200 px-4 py-2 text-[11px] text-amber-800">
-                  ⚠️ <strong>Căn cứ Luật Thuế GTGT sửa đổi (áp dụng từ 01/07/2025):</strong> Mọi hóa đơn mua hàng hóa, dịch vụ từ <strong>5.000.000đ trở lên</strong> (đã gồm VAT) bắt buộc phải có chứng từ thanh toán không dùng tiền mặt (Ủy nhiệm chi / Sao kê ngân hàng) thì doanh nghiệp mới được khấu trừ thuế GTGT và hạch toán chi phí hợp lý.
+                  <strong>Căn cứ Luật Thuế GTGT sửa đổi (áp dụng từ 01/07/2025):</strong> Mọi hóa đơn mua hàng hóa, dịch vụ từ <strong>5.000.000đ trở lên</strong> (đã gồm VAT) bắt buộc phải có chứng từ thanh toán không dùng tiền mặt (Ủy nhiệm chi / Sao kê ngân hàng) thì doanh nghiệp mới được khấu trừ thuế GTGT và hạch toán chi phí hợp lý.
                 </div>
 
                 <div className="overflow-x-auto">
@@ -800,7 +800,7 @@ export default function InvoicePreview({ invoiceData, syncMeta }) {
                             )}
                             {activeTab === 'purchase' && isValid && Number(item.tong_tien_thanh_toan || 0) >= 5000000 && (
                               <span className="inline-block mt-0.5 text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.2 rounded">
-                                🏦 ≥ 5tr: Cần CK
+                                ≥ 5tr: Cần CK
                               </span>
                             )}
                           </td>

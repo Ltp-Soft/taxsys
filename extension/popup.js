@@ -15,7 +15,7 @@ const DEFAULT_WEB_URL = 'https://tax.ltp-soft.com';
 togglePassBtn.addEventListener('click', () => {
   const isPass = passInput.type === 'password';
   passInput.type = isPass ? 'text' : 'password';
-  togglePassBtn.textContent = isPass ? '🙈' : '👁️';
+  togglePassBtn.textContent = isPass ? 'Ẩn' : 'Hiện';
 });
 
 // Mở trang Web Dashboard

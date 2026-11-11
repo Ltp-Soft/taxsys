@@ -109,7 +109,7 @@ export default function TaxAccountManager({ onSelectAccount, activeAccount }) {
     if (trimmedMst !== editingAccount.mst) {
       const dist = getLevenshteinDistance(editingAccount.mst, trimmedMst);
       if (dist > 1) {
-        setEditError('⛔ Không thể đổi sang MST của công ty khác! Gói bản quyền định danh cố định tối đa 02 MST. Bạn chỉ được phép điều chỉnh tối đa 1 ký tự nếu gõ nhầm một số khi nhập liệu.');
+        setEditError('Không thể đổi sang MST của công ty khác! Gói bản quyền định danh cố định tối đa 02 MST. Bạn chỉ được phép điều chỉnh tối đa 1 ký tự nếu gõ nhầm một số khi nhập liệu.');
         return;
       }
       // Bắn sự kiện đồng bộ cập nhật MST đã sửa sang Chrome Extension để không bị tính trùng hạn mức
@@ -381,8 +381,8 @@ export default function TaxAccountManager({ onSelectAccount, activeAccount }) {
                 />
                 <p className="text-[11px] text-slate-500 mt-1">
                   {allowTypoFix
-                    ? '⚠️ Cơ chế bảo vệ: Chỉ cho phép điều chỉnh 1 số nếu gõ nhầm khi nhập liệu. Không thể đổi sang MST của công ty khác.'
-                    : '🔒 Mã số thuế được cố định theo hạn mức 02 công ty miễn phí để chống gian lận.'}
+                    ? 'Cơ chế bảo vệ: Chỉ cho phép điều chỉnh 1 số nếu gõ nhầm khi nhập liệu. Không thể đổi sang MST của công ty khác.'
+                    : 'Mã số thuế được cố định theo hạn mức 02 công ty miễn phí để chống gian lận.'}
                 </p>
               </div>
 

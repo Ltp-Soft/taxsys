@@ -126,7 +126,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, onCle
       const oldMst = prevSelectedMstRef.current;
       setIsFlushingCache(true);
       setCacheFlushNotice(
-        `🧹 Đang xóa sạch bộ nhớ đệm (Cache, Cookie & Phiên GDT) của MST [${oldMst}] và khởi tạo kênh kết nối độc lập cho MST [${currentMst}]... Đảm bảo số liệu kế toán chính xác tuyệt đối 100%.`
+        `Đang xóa sạch bộ nhớ đệm (Cache, Cookie & Phiên GDT) của MST [${oldMst}] và khởi tạo kênh kết nối độc lập cho MST [${currentMst}]... Đảm bảo số liệu kế toán chính xác tuyệt đối 100%.`
       );
       setCaptchaSvg('');
       setCaptchaCkey('');
@@ -163,7 +163,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, onCle
 
     const targetLabel = activeAccount?.mst ? `MST ${activeAccount.mst}` : 'phiên hiện tại';
     setCacheFlushNotice(
-      `🧹 Đang giải phóng toàn bộ Cache, Token phiên cũ và kiểm tra lại độ trễ Cổng Thuế cho ${targetLabel}...`
+      `Đang giải phóng toàn bộ Cache, Token phiên cũ và kiểm tra lại độ trễ Cổng Thuế cho ${targetLabel}...`
     );
 
     window.postMessage({
@@ -337,7 +337,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, onCle
           console.log('[Sync] AI failed 3 times or requested manual captcha. Opening modal for user.');
           const svgData = d.captcha_svg || '';
           const ckeyData = d.ckey || '';
-          setCaptchaModalNote('⚠️ Mã bảo vệ lần này có độ nhiễu cao. Vui lòng nhìn ảnh bên dưới và nhập 6 ký tự để tiếp tục:');
+          setCaptchaModalNote('Mã bảo vệ lần này có độ nhiễu cao. Vui lòng nhìn ảnh bên dưới và nhập 6 ký tự để tiếp tục:');
           setIsSyncing(false);
           setShowCaptchaModal(true);
           if (svgData && ckeyData) {
@@ -374,7 +374,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, onCle
           console.log('[SyncResult] Received need_manual_captcha. Opening modal.');
           const svgData = res.captcha_svg || '';
           const ckeyData = res.ckey || '';
-          setCaptchaModalNote('⚠️ AI đã thử tự động 3 lần chưa khớp. Vui lòng nhìn ảnh và nhập mã Captcha bên dưới:');
+          setCaptchaModalNote('AI đã thử tự động 3 lần chưa khớp. Vui lòng nhìn ảnh và nhập mã Captcha bên dưới:');
           setIsSyncing(false);
           setShowCaptchaModal(true);
           if (svgData && ckeyData) {
@@ -398,7 +398,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, onCle
             setProgress({
               percent: 8,
               stage: 'FLUSHING_CACHE',
-              step: `🧹 Phát hiện bộ nhớ đệm từ MST trước — Đang tự động làm sạch Cache và tải lại dữ liệu chuẩn cho MST ${activeAccount?.mst}...`,
+              step: `Phát hiện bộ nhớ đệm từ MST trước — Đang tự động làm sạch Cache và tải lại dữ liệu chuẩn cho MST ${activeAccount?.mst}...`,
               purchaseCount: 0,
               soldCount: 0
             });
@@ -456,7 +456,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, onCle
             // Bắt mọi lỗi giải Captcha thất bại (kể cả trên bản Extension cũ từ Chrome Web Store) -> mở ngay bảng nhập Captcha tay!
             console.log('[SyncResult] Captcha failed after retries, opening manual captcha modal with fresh captcha.');
             setShowCaptchaModal(true);
-            handleRefreshCaptcha('⚠️ Giải mã tự động chưa khớp hoặc mã vừa nhập bị sai. Hệ thống đã tải mã Captcha mới, vui lòng nhập 6 ký tự bên dưới:');
+            handleRefreshCaptcha('Giải mã tự động chưa khớp hoặc mã vừa nhập bị sai. Hệ thống đã tải mã Captcha mới, vui lòng nhập 6 ký tự bên dưới:');
           } else {
             alert(`Đồng bộ thất bại: ${err}`);
           }
@@ -511,7 +511,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, onCle
       setProgress({
         percent: 2,
         stage: 'FLUSHING_CACHE',
-        step: `🧹 Đang xóa bộ nhớ đệm (Cache & Session) ${prevMstText} để bảo vệ độ chính xác kế toán...`,
+        step: `Đang xóa bộ nhớ đệm (Cache & Session) ${prevMstText} để bảo vệ độ chính xác kế toán...`,
         purchaseCount: 0,
         soldCount: 0
       });
@@ -527,7 +527,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, onCle
       setProgress({
         percent: 5,
         stage: 'PREPARING_CHANNEL',
-        step: `📡 Đang kiểm tra độ trễ Cổng Thuế (${gdtPingMs ? `${gdtPingMs}ms` : 'Ổn định'}) và thiết lập kênh kết nối độc lập cho MST ${activeAccount.mst}...`,
+        step: `Đang kiểm tra độ trễ Cổng Thuế (${gdtPingMs ? `${gdtPingMs}ms` : 'Ổn định'}) và thiết lập kênh kết nối độc lập cho MST ${activeAccount.mst}...`,
         purchaseCount: 0,
         soldCount: 0
       });
@@ -942,7 +942,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, onCle
               title="Nhấn để mở trang tiện ích trên Chrome Web Store và bấm Thêm vào Chrome"
             >
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>Chưa nhận Extension 👉 Bấm Cài 1-Click trên Web Store</span>
+              <span>Chưa nhận Extension — Bấm Cài 1-Click trên Web Store</span>
             </a>
           )}
         </div>
@@ -1024,7 +1024,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, onCle
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1">Doanh Nghiệp Đang Chọn</label>
           <div className="text-xs font-bold text-slate-800 bg-slate-50 px-3 py-2.5 rounded-xl border border-slate-200 truncate">
-            {activeAccount ? `${activeAccount.mst} - ${activeAccount.companyName}` : '⚠️ Chưa chọn MST'}
+            {activeAccount ? `${activeAccount.mst} - ${activeAccount.companyName}` : 'Chưa chọn MST'}
           </div>
         </div>
 
@@ -1142,7 +1142,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, onCle
           title="Xóa sạch bộ nhớ đệm (Cache & Session) của MST trước để chuẩn bị tra cứu MST tiếp theo chính xác tuyệt đối"
         >
           <Trash2 className="w-3.5 h-3.5 text-indigo-600" />
-          <span>🧹 Làm Sạch Cache Phiên</span>
+          <span>Làm Sạch Cache Phiên</span>
         </button>
 
         <button
@@ -1260,7 +1260,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, onCle
             {/* Header */}
             <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <span className="text-xl">👑</span>
+                <ShieldCheck className="w-5 h-5 text-blue-600 shrink-0" />
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">
                     Bản Quyền PRO Tra Cứu Không Giới Hạn MST
@@ -1282,11 +1282,11 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, onCle
             {upgradeErrorMsg && (
               <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5 mb-4 text-xs text-amber-950 leading-relaxed space-y-1">
                 <div className="font-bold flex items-center gap-1.5 text-amber-900">
-                  <span>ℹ️ Thông báo phân quyền gói sử dụng:</span>
+                  <span>Thông báo phân quyền gói sử dụng:</span>
                 </div>
                 <p>{upgradeErrorMsg}</p>
                 <p className="text-[11px] text-amber-800 italic pt-1 border-t border-amber-200/60 mt-1">
-                  💡 Chi phí gói PRO chỉ bằng 1 cốc trà sữa/tháng, tiết kiệm hàng chục giờ nhập liệu tay và bảo vệ bạn khỏi các lỗi loại trừ chi phí thuế!
+                  Gói bản quyền PRO giúp tiết kiệm hàng chục giờ đối soát thủ công mỗi kỳ kê khai và tự động kiểm soát rủi ro loại trừ chi phí thuế.
                 </p>
               </div>
             )}
@@ -1436,7 +1436,7 @@ export default function SyncControlPanel({ activeAccount, onSyncCompleted, onCle
                         disabled={checkoutLoading}
                         className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-2"
                       >
-                        {checkoutLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : '👉 Tạo Mã VietQR Thanh Toán Ngay'}
+                        {checkoutLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Tạo Mã VietQR Thanh Toán Ngay'}
                       </button>
                     </div>
                   </form>

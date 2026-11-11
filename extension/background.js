@@ -646,7 +646,7 @@ async function fetchAllInvoices(apiRunner, config, dateChunks, ckey = '', cvalue
                   stage: 'FETCHING',
                   month_label: chunk.label,
                   stream_label: `${stream.type === 'MUA_VAO' ? 'Mua vào' : 'Bán ra'} - ${stream.source_label}`,
-                  step: `🛡️ Đang đối soát & quét bù dữ liệu ${chunk.label} để đảm bảo không sót hóa đơn...`,
+                  step: `Đang đối soát & quét bù dữ liệu ${chunk.label} để đảm bảo không sót hóa đơn...`,
                   percent: percent,
                   purchase_count: purchaseMap.size,
                   sold_count: soldMap.size,
@@ -667,7 +667,7 @@ async function fetchAllInvoices(apiRunner, config, dateChunks, ckey = '', cvalue
                 stage: 'FETCHING',
                 month_label: chunk.label,
                 stream_label: `${stream.type === 'MUA_VAO' ? 'Mua vào' : 'Bán ra'} - ${stream.source_label}`,
-                step: `📡 Tín hiệu Cổng Thuế phản hồi chậm (${apiRunner.lastPingMs || 900}ms) — Đang tự động thử lại lần ${attempt}/${maxPageAttempts - 1} để chống thiếu dữ liệu (${chunk.label})...`,
+                step: `Tín hiệu Cổng Thuế phản hồi chậm (${apiRunner.lastPingMs || 900}ms) — Đang tự động thử lại lần ${attempt}/${maxPageAttempts - 1} để chống thiếu dữ liệu (${chunk.label})...`,
                 percent: percent,
                 purchase_count: purchaseMap.size,
                 sold_count: soldMap.size,
@@ -752,7 +752,7 @@ async function handleSyncRequest(payload) {
   // Bước 0: Xóa sạch Cache phiên trước để đảm bảo độc lập 100% giữa các MST
   broadcastProgress({
     stage: 'FLUSHING_CACHE',
-    step: `🧹 Đang dọn sạch bộ nhớ đệm phiên trước và khởi tạo kênh kết nối độc lập cho MST ${username}...`,
+    step: `Đang dọn sạch bộ nhớ đệm phiên trước và khởi tạo kênh kết nối độc lập cho MST ${username}...`,
     percent: 2,
     purchase_count: 0,
     sold_count: 0

@@ -178,7 +178,7 @@ export default function App() {
               </div>
 
               <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                <span>💡 Tại sao cần Extension?</span>
+                <span>Tại sao cần Extension?</span>
               </h2>
 
               <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
